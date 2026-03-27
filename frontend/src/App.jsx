@@ -4,15 +4,23 @@ import { Toaster } from 'react-hot-toast';
 import useAuthStore from './context/authStore';
 import { ProtectedRoute } from './components/shared/ProtectedRoute';
 
+// Páginas públicas
+import PublicLayout from './pages/public/PublicLayout';
+import InicioPage from './pages/public/InicioPage';
+import InstructivosPage from './pages/public/InstructivosPage';
+
+// Auth
 import LoginPage from './pages/LoginPage';
 import RecoverPasswordPage from './pages/RecoverPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
+
+// Dashboard
 import DashboardLayout, { DashboardHome } from './pages/DashboardLayout';
 import UserManagementPage from './pages/UserManagementPage';
 
 export default function App() {
   const init = useAuthStore(s => s.init);
-
   useEffect(() => { init(); }, [init]);
 
   return (
@@ -23,16 +31,23 @@ export default function App() {
       }} />
 
       <Routes>
-        {/* Públicas */}
+        {/* ── Públicas con navbar SIGEP II ── */}
+        <Route element={<PublicLayout />}>
+          <Route path="/inicio" element={<InicioPage />} />
+          <Route path="/instructivos" element={<InstructivosPage />} />
+        </Route>
+
+        {/* ── Auth (sin navbar) ── */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/recover-password" element={<RecoverPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-        {/* Cambio de contraseña (requiere auth) */}
+        {/* ── Cambio de contraseña (requiere auth) ── */}
         <Route path="/change-password" element={
           <ProtectedRoute><ChangePasswordPage /></ProtectedRoute>
         } />
 
-        {/* Dashboard */}
+        {/* ── Dashboard (requiere auth) ── */}
         <Route path="/dashboard" element={
           <ProtectedRoute><DashboardLayout /></ProtectedRoute>
         }>
@@ -45,17 +60,17 @@ export default function App() {
           } />
           <Route path="hoja-vida" element={
             <ProtectedRoute roles={['SERVIDOR', 'JTH', 'ADMIN']}>
-              <div style={{ padding: 20, background: '#fff', borderRadius: 12, maxWidth: 800 }}>
+              <div style={{ padding: 28, background: '#fff', borderRadius: 12, maxWidth: 800 }}>
                 <h2 style={{ color: '#003366' }}>📋 Hoja de Vida</h2>
-                <p style={{ color: '#666' }}>Módulo 2 — En desarrollo (HU-006 a HU-015)</p>
+                <p style={{ color: '#666' }}>Módulo 2 — En desarrollo </p>
               </div>
             </ProtectedRoute>
           } />
         </Route>
 
-        {/* Redirect raíz */}
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        {/* Redirects */}
+        <Route path="/" element={<Navigate to="/inicio" replace />} />
+        <Route path="*" element={<Navigate to="/inicio" replace />} />
       </Routes>
     </BrowserRouter>
   );

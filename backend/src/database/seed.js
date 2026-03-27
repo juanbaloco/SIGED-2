@@ -11,7 +11,6 @@ const seed = async () => {
     { code: 'CC',  name: 'Cédula de Ciudadanía' },
     { code: 'CE',  name: 'Cédula de Extranjería' },
     { code: 'PA',  name: 'Pasaporte' },
-    { code: 'TI',  name: 'Tarjeta de Identidad' },
     { code: 'NIT', name: 'NIT' },
   ];
   for (const d of docTypes) {

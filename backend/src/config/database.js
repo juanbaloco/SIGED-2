@@ -54,12 +54,15 @@ class SqlJsWrapper {
   transaction(fn) {
     return (...args) => {
       this._db.run('BEGIN');
+      this._inTransaction = true;
       try {
         fn(...args);
         this._db.run('COMMIT');
       } catch (e) {
-        this._db.run('ROLLBACK');
+        try { this._db.run('ROLLBACK'); } catch (_) {}
         throw e;
+      } finally {
+        this._inTransaction = false;
       }
     };
   }
@@ -88,7 +91,7 @@ const withAutosave = (wrapper) => {
       const origRun = stmt.run.bind(stmt);
       stmt.run = (...args) => {
         const result = origRun(...args);
-        wrapper.save();
+        if (!wrapper._inTransaction) wrapper.save();
         return result;
       };
     }
@@ -135,6 +138,13 @@ const initDb = async () => {
   wrapper.pragma('foreign_keys = ON');
 
   _db = withAutosave(wrapper);
+
+  // Auto-migración: columna welcome_email_sent (solo si la tabla ya existe)
+  const cols = _db.prepare('PRAGMA table_info(users)').all();
+  if (cols.length > 0 && !cols.some(c => c.name === 'welcome_email_sent')) {
+    _db.exec('ALTER TABLE users ADD COLUMN welcome_email_sent INTEGER NOT NULL DEFAULT 0');
+  }
+
   return _db;
 };
 
