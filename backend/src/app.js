@@ -50,6 +50,7 @@ app.use(morgan('combined', { stream: { write: msg => logger.info(msg.trim()) } }
 app.get('/api/health', (req, res) => res.json({ status: 'ok', env: process.env.NODE_ENV }));
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
+app.use('/api/cv', require('./routes/cvRoutes'));
 
 // ─── Manejo de errores ────────────────────────────────────────────────────────
 app.use(notFound);

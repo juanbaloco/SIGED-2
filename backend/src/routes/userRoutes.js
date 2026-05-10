@@ -198,6 +198,30 @@ router.get('/:id/audit', authorize('ADMIN'), (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// PATCH /api/users/:id/gerencia-publica
+// Habilita/deshabilita la sección de Gerencia Pública (HU-010). JTH / ADMIN.
+// Body: { enabled: boolean }
+// ─────────────────────────────────────────────────────────────────────────
+router.patch('/:id/gerencia-publica', authorize('JTH', 'ADMIN'), (req, res) => {
+  const db = getDb();
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean')
+    return res.status(400).json({ success: false, message: 'enabled (boolean) requerido' });
+
+  const user = db.prepare(`SELECT id FROM users WHERE id = ?`).get(req.params.id);
+  if (!user) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+
+  db.prepare(`UPDATE users SET gerencia_publica_enabled = ?, updated_at = datetime('now') WHERE id = ?`)
+    .run(enabled ? 1 : 0, req.params.id);
+  db.prepare(`
+    INSERT INTO audit_log (user_id, action, entity, entity_id, details, ip_address)
+    VALUES (?, 'GERENCIA_PUBLICA_TOGGLED', 'users', ?, ?, ?)
+  `).run(req.user.sub, req.params.id, JSON.stringify({ enabled }), req.ip);
+
+  res.json({ success: true, message: `Gerencia Pública ${enabled ? 'habilitada' : 'deshabilitada'}` });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // PATCH /api/users/:id/unlock
 // Desbloquea manualmente una cuenta bloqueada por intentos fallidos. JTH / ADMIN.
 // ─────────────────────────────────────────────────────────────────────────

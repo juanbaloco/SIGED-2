@@ -88,6 +88,91 @@ const migrate = async () => {
     CREATE INDEX IF NOT EXISTS idx_audit_user             ON audit_log(user_id);
     CREATE INDEX IF NOT EXISTS idx_reset_tokens_token     ON password_reset_tokens(token);
     CREATE INDEX IF NOT EXISTS idx_reset_tokens_user      ON password_reset_tokens(user_id);
+
+    -- ── MÓDULO 2: HOJA DE VIDA ─────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS cv_personal_data (
+      user_id              TEXT PRIMARY KEY,
+      first_name           TEXT NOT NULL,
+      middle_name          TEXT,
+      last_name            TEXT NOT NULL,
+      second_last_name     TEXT,
+      document_type_id     INTEGER NOT NULL,
+      document_number      TEXT NOT NULL,
+      birth_date           TEXT NOT NULL,
+      gender               TEXT NOT NULL,
+      phone                TEXT,
+      mobile               TEXT NOT NULL,
+      email                TEXT NOT NULL,
+      country              TEXT NOT NULL,
+      department           TEXT NOT NULL,
+      city                 TEXT NOT NULL,
+      zone_type            TEXT NOT NULL,
+      address              TEXT,
+      address_complement   TEXT,
+      validated            INTEGER NOT NULL DEFAULT 0,
+      validated_by         TEXT,
+      validated_at         TEXT,
+      created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at           TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (document_type_id) REFERENCES document_types(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS cv_education (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id              TEXT NOT NULL,
+      level                TEXT NOT NULL,
+      institution          TEXT NOT NULL,
+      title                TEXT NOT NULL,
+      start_date           TEXT,
+      end_date             TEXT,
+      professional_card    TEXT,
+      attachment_path      TEXT,
+      attachment_name      TEXT,
+      validated            INTEGER NOT NULL DEFAULT 0,
+      validated_by         TEXT,
+      validated_at         TEXT,
+      created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at           TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS cv_work_experience (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id              TEXT NOT NULL,
+      experience_type      TEXT NOT NULL,
+      employer             TEXT NOT NULL,
+      position             TEXT NOT NULL,
+      start_date           TEXT NOT NULL,
+      end_date             TEXT,
+      is_current           INTEGER NOT NULL DEFAULT 0,
+      responsibilities     TEXT,
+      attachment_path      TEXT,
+      attachment_name      TEXT,
+      validated            INTEGER NOT NULL DEFAULT 0,
+      validated_by         TEXT,
+      validated_at         TEXT,
+      created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at           TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS cv_management (
+      user_id              TEXT PRIMARY KEY,
+      hierarchical_level   TEXT NOT NULL,
+      position_name        TEXT NOT NULL,
+      entity_name          TEXT NOT NULL,
+      start_date           TEXT NOT NULL,
+      validated            INTEGER NOT NULL DEFAULT 0,
+      validated_by         TEXT,
+      validated_at         TEXT,
+      created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at           TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_cv_education_user      ON cv_education(user_id);
+    CREATE INDEX IF NOT EXISTS idx_cv_work_user           ON cv_work_experience(user_id);
   `);
 
   console.log('✅ Migrations completed successfully');
