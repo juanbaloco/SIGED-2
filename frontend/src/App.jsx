@@ -18,6 +18,7 @@ import ChangePasswordPage from './pages/ChangePasswordPage';
 // Dashboard
 import DashboardLayout, { DashboardHome } from './pages/DashboardLayout';
 import UserManagementPage from './pages/UserManagementPage';
+import HojaVidaPage from './pages/HojaVidaPage';
 
 export default function App() {
   const init = useAuthStore(s => s.init);
@@ -60,10 +61,7 @@ export default function App() {
           } />
           <Route path="hoja-vida" element={
             <ProtectedRoute roles={['SERVIDOR', 'JTH', 'ADMIN']}>
-              <div style={{ padding: 28, background: '#fff', borderRadius: 12, maxWidth: 800 }}>
-                <h2 style={{ color: '#003366' }}>📋 Hoja de Vida</h2>
-                <p style={{ color: '#666' }}>Módulo 2 — En desarrollo </p>
-              </div>
+              <HojaVidaPage />
             </ProtectedRoute>
           } />
         </Route>

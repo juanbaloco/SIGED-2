@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 
 const navItems = [
   { path: '/dashboard',             label: 'Inicio',          icon: '🏠', roles: ['SERVIDOR', 'JTH', 'ADMIN'] },
-  { path: '/dashboard/hoja-vida',   label: 'Mi Hoja de Vida', icon: '📋', roles: ['SERVIDOR'] },
+  { path: '/dashboard/hoja-vida',   label: 'Mi Hoja de Vida', icon: '📋', roles: ['SERVIDOR', 'JTH', 'ADMIN'] },
   { path: '/dashboard/usuarios',    label: 'Gestión de Usuarios', icon: '👥', roles: ['JTH', 'ADMIN'] },
   { path: '/dashboard/change-password', label: 'Cambiar Contraseña', icon: '🔒', roles: ['SERVIDOR', 'JTH', 'ADMIN'] },
 ];
@@ -83,14 +83,12 @@ export function DashboardHome() {
       </p>
 
       <div style={styles.cards}>
-        {user?.roles?.includes('SERVIDOR') && (
-          <div style={styles.card}>
-            <div style={styles.cardIcon}>📋</div>
-            <h3 style={styles.cardTitle}>Mi Hoja de Vida</h3>
-            <p style={styles.cardDesc}>Gestione y actualice su hoja de vida en el sistema.</p>
-            <Link to="/dashboard/hoja-vida" style={styles.cardBtn}>Ir a Hoja de Vida</Link>
-          </div>
-        )}
+        <div style={styles.card}>
+          <div style={styles.cardIcon}>📋</div>
+          <h3 style={styles.cardTitle}>Mi Hoja de Vida</h3>
+          <p style={styles.cardDesc}>Gestione y actualice su hoja de vida en el sistema.</p>
+          <Link to="/dashboard/hoja-vida" style={styles.cardBtn}>Ir a Hoja de Vida</Link>
+        </div>
         {(user?.roles?.includes('JTH') || user?.roles?.includes('ADMIN')) && (
           <div style={styles.card}>
             <div style={styles.cardIcon}>👥</div>

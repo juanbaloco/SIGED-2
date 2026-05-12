@@ -144,6 +144,87 @@ const initDb = async () => {
   if (cols.length > 0 && !cols.some(c => c.name === 'welcome_email_sent')) {
     _db.exec('ALTER TABLE users ADD COLUMN welcome_email_sent INTEGER NOT NULL DEFAULT 0');
   }
+  if (cols.length > 0 && !cols.some(c => c.name === 'gerencia_publica_enabled')) {
+    _db.exec('ALTER TABLE users ADD COLUMN gerencia_publica_enabled INTEGER NOT NULL DEFAULT 0');
+  }
+
+  // Auto-migración: tablas Hoja de Vida (Módulo 2)
+  _db.exec(`
+    CREATE TABLE IF NOT EXISTS cv_personal_data (
+      user_id              TEXT PRIMARY KEY,
+      first_name           TEXT NOT NULL,
+      middle_name          TEXT,
+      last_name            TEXT NOT NULL,
+      second_last_name     TEXT,
+      document_type_id     INTEGER NOT NULL,
+      document_number      TEXT NOT NULL,
+      birth_date           TEXT NOT NULL,
+      gender               TEXT NOT NULL,
+      phone                TEXT,
+      mobile               TEXT NOT NULL,
+      email                TEXT NOT NULL,
+      country              TEXT NOT NULL,
+      department           TEXT NOT NULL,
+      city                 TEXT NOT NULL,
+      zone_type            TEXT NOT NULL,
+      address              TEXT,
+      address_complement   TEXT,
+      validated            INTEGER NOT NULL DEFAULT 0,
+      validated_by         TEXT,
+      validated_at         TEXT,
+      created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS cv_education (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id              TEXT NOT NULL,
+      level                TEXT NOT NULL,
+      institution          TEXT NOT NULL,
+      title                TEXT NOT NULL,
+      start_date           TEXT,
+      end_date             TEXT,
+      professional_card    TEXT,
+      attachment_path      TEXT,
+      attachment_name      TEXT,
+      validated            INTEGER NOT NULL DEFAULT 0,
+      validated_by         TEXT,
+      validated_at         TEXT,
+      created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS cv_work_experience (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id              TEXT NOT NULL,
+      experience_type      TEXT NOT NULL,
+      employer             TEXT NOT NULL,
+      position             TEXT NOT NULL,
+      start_date           TEXT NOT NULL,
+      end_date             TEXT,
+      is_current           INTEGER NOT NULL DEFAULT 0,
+      responsibilities     TEXT,
+      attachment_path      TEXT,
+      attachment_name      TEXT,
+      validated            INTEGER NOT NULL DEFAULT 0,
+      validated_by         TEXT,
+      validated_at         TEXT,
+      created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS cv_management (
+      user_id              TEXT PRIMARY KEY,
+      hierarchical_level   TEXT NOT NULL,
+      position_name        TEXT NOT NULL,
+      entity_name          TEXT NOT NULL,
+      start_date           TEXT NOT NULL,
+      validated            INTEGER NOT NULL DEFAULT 0,
+      validated_by         TEXT,
+      validated_at         TEXT,
+      created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_cv_education_user ON cv_education(user_id);
+    CREATE INDEX IF NOT EXISTS idx_cv_work_user      ON cv_work_experience(user_id);
+  `);
 
   return _db;
 };
