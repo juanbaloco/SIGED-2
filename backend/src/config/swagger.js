@@ -25,4 +25,5 @@ const swaggerSpec = swaggerJSDoc({
 });
 
 module.exports = swaggerSpec;
-//documentacion swagger: http://localhost:3001/api/docs 
+//documentacion swagger: http://localhost:3001/api/docs  
+//subir archivo a la branch: git add . && git commit -m "Agrega documentación Swagger" && git push origin main
