@@ -53,7 +53,7 @@ app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/cv', require('./routes/cvRoutes'));
 
 const swaggerUi = require('swagger-ui-express');
-const swaggerSpec = require('./config/swagger');
+const swaggerSpec = require('./config/swagger');//esto tiene que corregirse
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // ─── Manejo de errores ────────────────────────────────────────────────────────
