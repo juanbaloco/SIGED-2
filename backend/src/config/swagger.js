@@ -25,3 +25,4 @@ const swaggerSpec = swaggerJSDoc({
 });
 
 module.exports = swaggerSpec;
+//documentacion swagger: http://localhost:3001/api/docs 
