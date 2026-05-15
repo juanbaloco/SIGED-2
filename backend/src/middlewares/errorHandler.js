@@ -1,7 +1,11 @@
 const logger = require('../config/logger');
 
 const errorHandler = (err, req, res, next) => {
-  const status  = err.status || 500;
+  if (res.headersSent) {
+    return; // Evita enviar respuesta duplicada y loop
+  }
+  
+  const status = err.status || 500;
   const message = err.message || 'Error interno del servidor';
 
   if (status >= 500) {

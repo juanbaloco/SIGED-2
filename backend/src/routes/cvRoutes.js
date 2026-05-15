@@ -9,6 +9,7 @@ router.use(authenticate);
 router.use(authorize('SERVIDOR', 'JTH', 'ADMIN'));
 
 router.get('/summary', ctrl.getSummary);
+router.get('/export/pdf', ctrl.exportPdf);
 
 // ── HU-006 / HU-007: Datos personales ─────────────────────────────────────
 router.get('/personal', ctrl.getPersonal);
@@ -68,5 +69,8 @@ router.put('/management',
   ],
   ctrl.saveManagement
 );
+
+// ── HU-014: Previsualización de adjuntos ──────────────────────────────────
+router.get('/attachments/:section/:id?', ctrl.getAttachment);
 
 module.exports = router;
