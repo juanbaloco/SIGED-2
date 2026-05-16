@@ -19,11 +19,26 @@ const swaggerSpec = swaggerJSDoc({
           bearerFormat: 'JWT',
         },
       },
+      schemas: {
+        ErrorResponse: {
+          type: 'object',
+          properties: {
+            success: {
+              type: 'boolean',
+              example: false,
+            },
+            message: {
+              type: 'string',
+              example: 'Credenciales inválidas',
+            },
+          },
+        },
+      },
     },
+        
+        
   },
   apis: ['./src/routes/*.js'],
 });
 
 module.exports = swaggerSpec;
-//documentacion swagger: http://localhost:3001/api/docs  
-//subir archivo a la branch: git add . && git commit -m "Agrega documentación Swagger" && git push origin main

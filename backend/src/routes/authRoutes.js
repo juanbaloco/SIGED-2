@@ -9,6 +9,65 @@ const router = Router();
 
 router.get('/document-types', ctrl.getDocumentTypes);
 
+/**
+ * @openapi
+ * /auth/login:
+ *   post:
+ *     tags:
+ *       - Autenticación
+ *     summary: Iniciar sesión (HU-001)
+ *     description: Autentica al servidor público con tipo y número de documento.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - documentTypeId
+ *               - documentNumber
+ *               - password
+ *             properties:
+ *               documentTypeId:
+ *                 type: integer
+ *                 example: 1
+ *               documentNumber:
+ *                 type: string
+ *                 example: "00000000"
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: "Admin@2024!"
+ *     responses:
+ *       200:
+ *         description: Login exitoso, devuelve tokens y datos del usuario.
+ *       401:
+ *         description: Credenciales inválidas.
+ *         content:
+ *          application/json:
+ *            schema:
+ *             $ref: '#/components/schemas/ErrorResponse'      
+ *       423:
+ *         description: Cuenta bloqueada por demasiados intentos.
+ *         content:
+ *          application/json:
+ *            schema:
+ *             $ref: '#/components/schemas/ErrorResponse'
+ *            example:
+ *              success: false
+ *              message: "Cuenta bloqueada temporalmente por demasiados intentos fallidos. Intente nuevamente en 15 minutos."
+ *       500:
+ *         description: Error interno del servidor.
+ *         content:
+ *          application/json:
+ *            schema:
+ *             $ref: '#/components/schemas/ErrorResponse'
+ *            example:
+ *             success: false
+ *             message: "Error interno del servidor"
+ */
+
+
 router.post('/login',
   [
     body('documentTypeId').isInt({ min: 1 }).withMessage('Tipo de documento inválido'),
