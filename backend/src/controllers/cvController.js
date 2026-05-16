@@ -82,11 +82,13 @@ exports.getManagement = async (req, res, next) => {
   try {
     const enabled = await cvService.isManagementEnabled(userId(req));
     if (!enabled) {
-      return res.status(403).json({ error: 'Sección de Gerencia Pública no habilitada para su cargo.' });
+      return res.status(403).json({ success:false,
+        message: 'Sección de Gerencia Pública no habilitada para su cargo.' 
+      });
     }
 
     const management = await cvService.getManagement(userId(req));
-    return res.json({ data: management || {} });
+    return res.json({ success: true, data: management || {} });
   } catch (err) {
     next(err);
   }
@@ -96,7 +98,9 @@ exports.saveManagement = async (req, res, next) => {
   try {
     const enabled = await cvService.isManagementEnabled(userId(req));
     if (!enabled) {
-      return res.status(403).json({ error: 'No autorizado para guardar Gerencia Pública.' });
+      return res.status(403).json({
+         success: false,
+         message: 'No autorizado para guardar Gerencia Pública.' });
     }
 
     const payload = {
@@ -108,7 +112,7 @@ exports.saveManagement = async (req, res, next) => {
     };
 
     const management = await cvService.upsertManagement(userId(req), payload);
-    return res.json({ data: management });
+    return res.json({ success: true, data: management });
   } catch (err) {
     next(err);
   }
