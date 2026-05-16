@@ -15,16 +15,14 @@ const userId = (req) => req.user.sub;
 
 // GET /api/cv/summary
 exports.getSummary = (req, res, next) => {
-  try { res.json({ success: true, data: cvService.getSummary(userId(req)) }); const summary = cvService.getSummary(userId(req));
+  try {
+    const summary = cvService.getSummary(userId(req));
     const enabled = cvService.isManagementEnabled(userId(req));
-    return res.json({
+    res.json({
       success: true,
-      data: {
-        ...summary,
-        managementEnabled: !!enabled,
-      },
+      data: {...summary, managementEnabled: !!enabled },
     });
-  } catch (err) {
+    } catch (err) {
     next(err);
   }
 };
