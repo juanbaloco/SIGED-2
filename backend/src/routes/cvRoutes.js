@@ -12,6 +12,56 @@ router.get('/summary', ctrl.getSummary);
 router.get('/export/pdf', ctrl.exportPdf);
 
 // ── HU-006 / HU-007: Datos personales ─────────────────────────────────────
+/**
+ * @openapi
+ * /cv/personal:
+ *   get:
+ *     tags:
+ *       - Hoja de Vida — Datos Personales
+ *     summary: Obtener mis datos personales (HU-006)
+ *     description: |
+ *       Devuelve los datos personales del servidor público autenticado.
+ *       Si aún no ha registrado información, el campo `data` será `null`.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Operación exitosa.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/PersonalInfo'
+ *       401:
+ *         description: No autenticado o token expirado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               success: false
+ *               message: "Token de acceso requerido"
+ *       403:
+ *         description: Sin permisos suficientes (rol no autorizado).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               success: false
+ *               message: "No tiene permisos para realizar esta acción"
+ *       500:
+ *         description: Error interno del servidor.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 router.get('/personal', ctrl.getPersonal);
 router.put('/personal',
   [
