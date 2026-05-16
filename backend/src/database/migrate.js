@@ -109,6 +109,8 @@ const migrate = async () => {
       zone_type            TEXT NOT NULL,
       address              TEXT,
       address_complement   TEXT,
+      attachment_path      TEXT,
+      attachment_name      TEXT,
       validated            INTEGER NOT NULL DEFAULT 0,
       validated_by         TEXT,
       validated_at         TEXT,
@@ -163,6 +165,8 @@ const migrate = async () => {
       position_name        TEXT NOT NULL,
       entity_name          TEXT NOT NULL,
       start_date           TEXT NOT NULL,
+      attachment_path      TEXT,
+      attachment_name      TEXT,
       validated            INTEGER NOT NULL DEFAULT 0,
       validated_by         TEXT,
       validated_at         TEXT,
@@ -174,6 +178,18 @@ const migrate = async () => {
     CREATE INDEX IF NOT EXISTS idx_cv_education_user      ON cv_education(user_id);
     CREATE INDEX IF NOT EXISTS idx_cv_work_user           ON cv_work_experience(user_id);
   `);
+
+  const ensureColumn = (table, column, definition) => {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+    if (cols.length > 0 && !cols.some(c => c.name === column)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${definition};`);
+    }
+  };
+
+  ensureColumn('cv_personal_data', 'attachment_path', 'attachment_path TEXT');
+  ensureColumn('cv_personal_data', 'attachment_name', 'attachment_name TEXT');
+  ensureColumn('cv_management', 'attachment_path', 'attachment_path TEXT');
+  ensureColumn('cv_management', 'attachment_name', 'attachment_name TEXT');
 
   console.log('✅ Migrations completed successfully');
   process.exit(0);
