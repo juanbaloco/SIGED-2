@@ -50,6 +50,7 @@ exports.createEducation = (req, res, next) => {
   catch (err) { next(err); }
 };
 exports.updateEducation = (req, res, next) => {
+  if (!handleValidation(req, res)) return;
   try { res.json({ success: true, data: cvService.updateEducation(userId(req), parseInt(req.params.id), req.body) }); }
   catch (err) { next(err); }
 };
@@ -69,6 +70,7 @@ exports.createWork = (req, res, next) => {
   catch (err) { next(err); }
 };
 exports.updateWork = (req, res, next) => {
+  if (!handleValidation(req, res)) return;
   try { res.json({ success: true, data: cvService.updateWork(userId(req), parseInt(req.params.id), req.body) }); }
   catch (err) { next(err); }
 };
@@ -134,6 +136,7 @@ exports.getAttachment = (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+
 // HU-015 — Descargar e imprimir hoja de vida
 exports.exportPdf = async (req, res, next) => {
   try {
@@ -142,5 +145,15 @@ exports.exportPdf = async (req, res, next) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="hoja_vida_${date}.pdf"`);
     return res.send(pdfBuffer);
+  } catch (err) { next(err); }
+};
+
+// ─── OBS #2 — Validar / desvalidar sección (solo JTH/ADMIN) ─────────────────
+exports.setValidation = (req, res, next) => {
+  if (!handleValidation(req, res)) return;
+  try {
+    const { userId: targetUserId, section, recordId, validated } = req.body;
+    const result = cvService.setSectionValidation(targetUserId, section, recordId, validated);
+    res.json({ success: true, data: result });
   } catch (err) { next(err); }
 };

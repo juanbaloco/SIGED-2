@@ -417,6 +417,7 @@ const getAttachmentFile = (userId, section, id) => {
   return { absolutePath, fileName, mimeType };
 };
 
+
 // ─── Resumen completo (para precarga del front) ──────────────────────────────
 const getSummary = (userId) => ({
   personal: getPersonalData(userId),
@@ -426,6 +427,43 @@ const getSummary = (userId) => ({
   managementEnabled: isManagementEnabled(userId), // ESTA LÍNEA ES CLAVE
 });
 
+// ─── OBS #2: validar / desvalidar sección (solo JTH/ADMIN) ──────────────────
+const setSectionValidation = (targetUserId, section, recordId, validated) => {
+  const db = getDb();
+  const v = validated ? 1 : 0;
+
+  const queries = {
+    personal:   `UPDATE cv_personal_data   SET validated = ?, updated_at = datetime('now') WHERE user_id = ?`,
+    management: `UPDATE cv_management      SET validated = ?, updated_at = datetime('now') WHERE user_id = ?`,
+    education:  `UPDATE cv_education       SET validated = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?`,
+    work:       `UPDATE cv_work_experience SET validated = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?`,
+  };
+
+  if (!queries[section])
+    throw { status: 400, message: 'Sección inválida. Valores: personal, education, work, management' };
+
+  let result;
+  if (section === 'personal' || section === 'management') {
+    result = db.prepare(queries[section]).run(v, targetUserId);
+  } else {
+    if (!recordId)
+      throw { status: 400, message: `recordId requerido para sección "${section}"` };
+    result = db.prepare(queries[section]).run(v, recordId, targetUserId);
+  }
+
+  if (result.changes === 0)
+    throw { status: 404, message: 'Registro no encontrado para validar' };
+
+  return {
+    section,
+    targetUserId,
+    recordId: recordId || null,
+    validated: !!validated,
+  };
+};
+
+
+
 module.exports = {
   getPersonalData, upsertPersonalData,
   listEducation, createEducation, updateEducation, deleteEducation,
@@ -433,4 +471,5 @@ module.exports = {
   getManagement, upsertManagement, isManagementEnabled,
   getAttachmentFile,
   getSummary,
+  setSectionValidation, // OBS #2
 };
