@@ -94,9 +94,6 @@
  *               zoneType:          { type: string, enum: ['URBANA', 'RURAL'] }
  *               address:           { type: string, nullable: true, description: 'Obligatoria si zoneType=URBANA' }
  *               addressComplement: { type: string, nullable: true, description: 'Obligatorio si zoneType=RURAL' }
- *               fileBase64:        { type: string, nullable: true, description: 'PDF o JPG en base64, máx 2MB (HU-013)' }
- *               fileName:          { type: string, nullable: true }
- *               fileMime:          { type: string, enum: ['application/pdf', 'image/jpeg'], nullable: true }
  *     responses:
  *       200:
  *         description: Datos guardados.
@@ -144,14 +141,11 @@
  *             required: [level, institution, title]
  *             properties:
  *               level:            { type: string, enum: ['PREGRADO', 'POSGRADO', 'TARJETA_PROFESIONAL'] }
- *               institution:      { type: string }
- *               title:            { type: string }
+ *               institution:      { type: string, example: 'Universidad Autónoma de Occidente' }
+ *               title:            { type: string, example: 'Ingeniería Informática' }
  *               startDate:        { type: string, format: date, nullable: true }
  *               endDate:          { type: string, format: date, nullable: true }
  *               professionalCard: { type: string, nullable: true }
- *               fileBase64:       { type: string, nullable: true }
- *               fileName:         { type: string, nullable: true }
- *               fileMime:         { type: string, nullable: true }
  *     responses:
  *       201:
  *         description: Registro creado, devuelve lista actualizada.
@@ -171,8 +165,22 @@
  *         name: id
  *         required: true
  *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [level, institution, title]
+ *             properties:
+ *               level:            { type: string, enum: ['PREGRADO', 'POSGRADO', 'TARJETA_PROFESIONAL'] }
+ *               institution:      { type: string, example: 'Universidad del Valle' }
+ *               title:            { type: string, example: 'Maestría en Ingeniería' }
+ *               startDate:        { type: string, format: date, nullable: true }
+ *               endDate:          { type: string, format: date, nullable: true }
+ *               professionalCard: { type: string, nullable: true }
  *     responses:
- *       200: { description: Actualizado. }
+ *       200: { description: Actualizado, devuelve lista actualizada. }
  *       400: { $ref: '#/components/responses/BadRequest' }
  *       404: { $ref: '#/components/responses/NotFound' }
  *       423: { $ref: '#/components/responses/Locked' }
@@ -201,6 +209,14 @@
  *     responses:
  *       200:
  *         description: Lista de experiencias.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 data:    { type: array, items: { $ref: '#/components/schemas/Work' } }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
  *   post:
  *     tags: [Hoja de Vida — Experiencia]
  *     summary: Crear experiencia laboral (HU-009)
@@ -214,15 +230,16 @@
  *             required: [experienceType, employer, position, startDate]
  *             properties:
  *               experienceType:   { type: string, enum: ['PUBLICA', 'PRIVADA', 'DOCENTE'] }
- *               employer:         { type: string }
- *               position:         { type: string }
- *               startDate:        { type: string, format: date }
+ *               employer:         { type: string, example: 'Alcaldía de Cali' }
+ *               position:         { type: string, example: 'Analista de sistemas' }
+ *               startDate:        { type: string, format: date, example: '2023-02-01' }
  *               endDate:          { type: string, format: date, nullable: true }
  *               isCurrent:        { type: boolean, nullable: true }
  *               responsibilities: { type: string, nullable: true }
  *     responses:
- *       201: { description: Creada. }
+ *       201: { description: Creada, devuelve lista actualizada. }
  *       400: { $ref: '#/components/responses/BadRequest' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
  */
 
 /**
@@ -237,8 +254,25 @@
  *         name: id
  *         required: true
  *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [experienceType, employer, position, startDate]
+ *             properties:
+ *               experienceType:   { type: string, enum: ['PUBLICA', 'PRIVADA', 'DOCENTE'] }
+ *               employer:         { type: string, example: 'Gobernación del Valle' }
+ *               position:         { type: string, example: 'Director TI' }
+ *               startDate:        { type: string, format: date, example: '2024-01-01' }
+ *               endDate:          { type: string, format: date, nullable: true }
+ *               isCurrent:        { type: boolean, nullable: true }
+ *               responsibilities: { type: string, nullable: true }
  *     responses:
- *       200: { description: Actualizada. }
+ *       200: { description: Actualizada, devuelve lista actualizada. }
+ *       400: { $ref: '#/components/responses/BadRequest' }
+ *       404: { $ref: '#/components/responses/NotFound' }
  *       423: { $ref: '#/components/responses/Locked' }
  *   delete:
  *     tags: [Hoja de Vida — Experiencia]
@@ -250,7 +284,8 @@
  *         required: true
  *         schema: { type: integer }
  *     responses:
- *       200: { description: Eliminada. }
+ *       200: { description: Eliminada, devuelve lista actualizada. }
+ *       404: { $ref: '#/components/responses/NotFound' }
  *       423: { $ref: '#/components/responses/Locked' }
  */
 
@@ -260,6 +295,7 @@
  *   get:
  *     tags: [Hoja de Vida — Gerencia Pública]
  *     summary: Obtener mi sección de Gerencia Pública (HU-010)
+ *     description: Solo accesible si el cargo lo habilita (ver `isManagementEnabled`).
  *     security: [{ bearerAuth: [] }]
  *     responses:
  *       200:
@@ -284,12 +320,13 @@
  *             type: object
  *             required: [hierarchicalLevel, positionName, entityName, startDate]
  *             properties:
- *               hierarchicalLevel: { type: string }
- *               positionName:      { type: string }
- *               entityName:        { type: string }
- *               startDate:         { type: string, format: date }
+ *               hierarchicalLevel: { type: string, example: 'Directivo' }
+ *               positionName:      { type: string, example: 'Director de Tecnología' }
+ *               entityName:        { type: string, example: 'Gobernación del Valle' }
+ *               startDate:         { type: string, format: date, example: '2024-01-01' }
  *     responses:
- *       200: { description: Guardados. }
+ *       200: { description: Datos guardados. }
+ *       400: { $ref: '#/components/responses/BadRequest' }
  *       403: { $ref: '#/components/responses/Forbidden' }
  *       423: { $ref: '#/components/responses/Locked' }
  */
@@ -309,11 +346,11 @@
  *       - in: path
  *         name: id
  *         required: false
- *         description: Requerido para `education` y `work`.
+ *         description: Requerido para `education` y `work`. Opcional para `personal` y `management`.
  *         schema: { type: integer }
  *     responses:
  *       200:
- *         description: Archivo binario.
+ *         description: Archivo binario (PDF o JPG).
  *         content:
  *           application/pdf:  { schema: { type: string, format: binary } }
  *           image/jpeg:       { schema: { type: string, format: binary } }
@@ -340,9 +377,9 @@
  *             type: object
  *             required: [userId, section, validated]
  *             properties:
- *               userId:    { type: string, format: uuid }
+ *               userId:    { type: string, format: uuid, example: '5b15e7ad-d4a1-4e9d-a08c-ab3b2af77cc7' }
  *               section:   { type: string, enum: [personal, education, work, management] }
- *               recordId:  { type: integer, nullable: true }
+ *               recordId:  { type: integer, nullable: true, description: 'Requerido solo para education y work' }
  *               validated: { type: boolean, example: true }
  *     responses:
  *       200:

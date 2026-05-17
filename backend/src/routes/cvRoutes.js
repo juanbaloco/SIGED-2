@@ -77,7 +77,7 @@ router.put('/validate',
   [
     body('userId').isString().notEmpty().withMessage('userId requerido'),
     body('section').isIn(['personal', 'education', 'work', 'management']).withMessage('Sección inválida'),
-    body('recordId').optional().isInt({ min: 1 }).withMessage('recordId debe ser entero ≥ 1'),
+    body('recordId').optional({values: 'falsy'}).isInt({min: 1}).withMessage('recordId debe ser entero ≥ 1'),
     body('validated').isBoolean().withMessage('validated debe ser true o false'),
   ],
   ctrl.setValidation

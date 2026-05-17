@@ -104,7 +104,7 @@ export default function UserManagementPage() {
       if (!searchDocType || !searchDoc) { toast.error('Ingrese tipo y número de documento'); return; }
       setSearching(true);
       try {
-        const res = await api.get(`/auth/users/search?documentTypeId=${searchDocType}&documentNumber=${searchDoc}`);
+        const res = await api.get(`/users/search?documentTypeId=${searchDocType}&documentNumber=${searchDoc}`);
         setFoundUser(res.data.data);
       } catch {
         toast.error('Usuario no encontrado');
