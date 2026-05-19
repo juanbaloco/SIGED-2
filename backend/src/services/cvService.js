@@ -5,16 +5,26 @@ const logger = require('../config/logger');
 
 const UPLOAD_ROOT = path.resolve(process.env.CV_UPLOAD_DIR || './database/uploads/cv');
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
-const ALLOWED_MIME = ['application/pdf'];
-const EXT_BY_MIME = { 'application/pdf': '.pdf' };
+const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/jpg'];
+const EXT_BY_MIME = {
+  'application/pdf': '.pdf',
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+};
+
+const MIME_BY_EXT = {
+  '.pdf': 'application/pdf',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+};
 
 const ensureDir = (dir) => { if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); };
 
-// HU-008: persistir archivo PDF base64 → disco. Devuelve { path, name }.
+// HU-013: persistir soporte (PDF/JPG) base64 → disco. Devuelve { path, name }.
 const saveAttachment = ({ userId, section, base64, filename, mime }) => {
   if (!base64) return { path: null, name: null };
   if (!ALLOWED_MIME.includes(mime))
-    throw { status: 400, message: 'Formato no permitido. Solo PDF.' };
+    throw { status: 400, message: 'Formato no permitido. Solo PDF o JPG.' };
 
   const buffer = Buffer.from(base64, 'base64');
   if (buffer.length > MAX_FILE_BYTES)
@@ -38,6 +48,11 @@ const removeFileIfExists = (relPath) => {
   if (fs.existsSync(abs)) {
     try { fs.unlinkSync(abs); } catch (e) { logger.warn('Could not unlink file', { abs, err: e.message }); }
   }
+};
+
+const inferMimeType = (fileNameOrPath) => {
+  const ext = path.extname(fileNameOrPath || '').toLowerCase();
+  return MIME_BY_EXT[ext] || 'application/octet-stream';
 };
 
 // ─── HU-006 / HU-007: datos personales ───────────────────────────────────────
@@ -66,6 +81,18 @@ const upsertPersonalData = (userId, payload) => {
   if (payload.zoneType === 'URBANA' && !payload.address)
     throw { status: 400, message: 'En zona urbana, la dirección es obligatoria' };
 
+  let attachmentPath = existing?.attachment_path || null;
+  let attachmentName = existing?.attachment_name || null;
+  if (payload.fileBase64) {
+    removeFileIfExists(existing?.attachment_path);
+    const att = saveAttachment({
+      userId, section: 'personal', base64: payload.fileBase64,
+      filename: payload.fileName, mime: payload.fileMime,
+    });
+    attachmentPath = att.path;
+    attachmentName = att.name;
+  }
+
   if (existing) {
     db.prepare(`
       UPDATE cv_personal_data SET
@@ -73,6 +100,7 @@ const upsertPersonalData = (userId, payload) => {
         document_type_id = ?, document_number = ?, birth_date = ?, gender = ?,
         phone = ?, mobile = ?, email = ?,
         country = ?, department = ?, city = ?, zone_type = ?, address = ?, address_complement = ?,
+        attachment_path = ?, attachment_name = ?,
         updated_at = datetime('now')
       WHERE user_id = ?
     `).run(
@@ -81,6 +109,7 @@ const upsertPersonalData = (userId, payload) => {
       payload.phone || null, payload.mobile, payload.email,
       payload.country, payload.department, payload.city, payload.zoneType,
       payload.address || null, payload.addressComplement || null,
+      attachmentPath, attachmentName,
       userId
     );
   } else {
@@ -89,14 +118,15 @@ const upsertPersonalData = (userId, payload) => {
         user_id, first_name, middle_name, last_name, second_last_name,
         document_type_id, document_number, birth_date, gender,
         phone, mobile, email, country, department, city,
-        zone_type, address, address_complement
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        zone_type, address, address_complement, attachment_path, attachment_name
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(
       userId, payload.firstName, payload.middleName || null, payload.lastName, payload.secondLastName || null,
       payload.documentTypeId, payload.documentNumber, payload.birthDate, payload.gender,
       payload.phone || null, payload.mobile, payload.email,
       payload.country, payload.department, payload.city,
-      payload.zoneType, payload.address || null, payload.addressComplement || null
+      payload.zoneType, payload.address || null, payload.addressComplement || null,
+      attachmentPath, attachmentName
     );
   }
 
@@ -248,8 +278,40 @@ const deleteWork = (userId, id) => {
 
 // ─── HU-010: gerencia pública ────────────────────────────────────────────────
 const isManagementEnabled = (userId) => {
-  const u = getDb().prepare(`SELECT gerencia_publica_enabled FROM users WHERE id = ?`).get(userId);
-  return !!(u && u.gerencia_publica_enabled);
+  const db = getDb();
+  try {
+    // 1. Obtener el código del rol (incluimos JTH y SERVIDOR)
+    const roleRow = db.prepare(`
+      SELECT r.code 
+      FROM roles r
+      JOIN user_roles ur ON r.id = ur.role_id
+      WHERE ur.user_id = ?
+    `).get(userId);
+
+    if (!roleRow) return false;
+    const role = roleRow.code;
+
+    // Si es ADMIN, acceso total inmediato
+    if (role === 'ADMIN') return true;
+
+    // 2. Si es JTH o SERVIDOR, verificar la experiencia pública
+    if (role === 'JTH' || role === 'SERVIDOR') {
+      const exp = db.prepare(`
+        SELECT 1 FROM cv_work_experience 
+        WHERE user_id = ? 
+        AND UPPER(TRIM(experience_type)) = 'PUBLICA' 
+        LIMIT 1
+      `).get(userId);
+
+      // Si encuentra al menos una experiencia pública, devuelve true
+      return !!exp;
+    }
+
+    return false;
+  } catch (error) {
+    console.error("Error en isManagementEnabled:", error);
+    return false;
+  }
 };
 
 const getManagement = (userId) => {
@@ -269,21 +331,92 @@ const upsertManagement = (userId, payload) => {
   if (existing && existing.validated)
     throw { status: 423, message: 'La sección está validada. Solicite al JTH levantar la validación.' };
 
+  let attachmentPath = existing?.attachment_path || null;
+  let attachmentName = existing?.attachment_name || null;
+  if (payload.fileBase64) {
+    removeFileIfExists(existing?.attachment_path);
+    const att = saveAttachment({
+      userId, section: 'management', base64: payload.fileBase64,
+      filename: payload.fileName, mime: payload.fileMime,
+    });
+    attachmentPath = att.path;
+    attachmentName = att.name;
+  }
+
   if (existing) {
     db.prepare(`
       UPDATE cv_management SET
         hierarchical_level = ?, position_name = ?, entity_name = ?, start_date = ?,
+        attachment_path = ?, attachment_name = ?,
         updated_at = datetime('now')
       WHERE user_id = ?
-    `).run(payload.hierarchicalLevel, payload.positionName, payload.entityName, payload.startDate, userId);
+    `).run(
+      payload.hierarchicalLevel, payload.positionName, payload.entityName, payload.startDate,
+      attachmentPath, attachmentName, userId
+    );
   } else {
     db.prepare(`
-      INSERT INTO cv_management (user_id, hierarchical_level, position_name, entity_name, start_date)
-      VALUES (?,?,?,?,?)
-    `).run(userId, payload.hierarchicalLevel, payload.positionName, payload.entityName, payload.startDate);
+      INSERT INTO cv_management (
+        user_id, hierarchical_level, position_name, entity_name, start_date,
+        attachment_path, attachment_name
+      ) VALUES (?,?,?,?,?,?,?)
+    `).run(
+      userId, payload.hierarchicalLevel, payload.positionName, payload.entityName, payload.startDate,
+      attachmentPath, attachmentName
+    );
   }
   return getManagement(userId);
 };
+
+const getAttachmentRow = (userId, section, id) => {
+  const db = getDb();
+  switch (section) {
+    case 'personal':
+      return db.prepare(`
+        SELECT attachment_path, attachment_name
+        FROM cv_personal_data
+        WHERE user_id = ?
+      `).get(userId);
+    case 'management':
+      return db.prepare(`
+        SELECT attachment_path, attachment_name
+        FROM cv_management
+        WHERE user_id = ?
+      `).get(userId);
+    case 'education':
+      if (!id) throw { status: 400, message: 'El id es requerido para adjuntos de formación' };
+      return db.prepare(`
+        SELECT attachment_path, attachment_name
+        FROM cv_education
+        WHERE user_id = ? AND id = ?
+      `).get(userId, id);
+    case 'work':
+      if (!id) throw { status: 400, message: 'El id es requerido para adjuntos de experiencia' };
+      return db.prepare(`
+        SELECT attachment_path, attachment_name
+        FROM cv_work_experience
+        WHERE user_id = ? AND id = ?
+      `).get(userId, id);
+    default:
+      throw { status: 400, message: 'Sección de adjunto inválida' };
+  }
+};
+
+const getAttachmentFile = (userId, section, id) => {
+  const row = getAttachmentRow(userId, section, id);
+  if (!row || !row.attachment_path)
+    throw { status: 404, message: 'No existe documento adjunto para este registro' };
+
+  const absolutePath = path.resolve(row.attachment_path);
+  if (!fs.existsSync(absolutePath))
+    throw { status: 404, message: 'El archivo adjunto no fue encontrado en el servidor' };
+
+  const fileName = row.attachment_name || path.basename(absolutePath);
+  const mimeType = inferMimeType(fileName);
+
+  return { absolutePath, fileName, mimeType };
+};
+
 
 // ─── Resumen completo (para precarga del front) ──────────────────────────────
 const getSummary = (userId) => ({
@@ -291,13 +424,52 @@ const getSummary = (userId) => ({
   education: listEducation(userId),
   work: listWork(userId),
   management: getManagement(userId),
-  managementEnabled: isManagementEnabled(userId),
+  managementEnabled: isManagementEnabled(userId), // ESTA LÍNEA ES CLAVE
 });
+
+// ─── OBS #2: validar / desvalidar sección (solo JTH/ADMIN) ──────────────────
+const setSectionValidation = (targetUserId, section, recordId, validated) => {
+  const db = getDb();
+  const v = validated ? 1 : 0;
+
+  const queries = {
+    personal:   `UPDATE cv_personal_data   SET validated = ?, updated_at = datetime('now') WHERE user_id = ?`,
+    management: `UPDATE cv_management      SET validated = ?, updated_at = datetime('now') WHERE user_id = ?`,
+    education:  `UPDATE cv_education       SET validated = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?`,
+    work:       `UPDATE cv_work_experience SET validated = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?`,
+  };
+
+  if (!queries[section])
+    throw { status: 400, message: 'Sección inválida. Valores: personal, education, work, management' };
+
+  let result;
+  if (section === 'personal' || section === 'management') {
+    result = db.prepare(queries[section]).run(v, targetUserId);
+  } else {
+    if (!recordId)
+      throw { status: 400, message: `recordId requerido para sección "${section}"` };
+    result = db.prepare(queries[section]).run(v, recordId, targetUserId);
+  }
+
+  if (result.changes === 0)
+    throw { status: 404, message: 'Registro no encontrado para validar' };
+
+  return {
+    section,
+    targetUserId,
+    recordId: recordId || null,
+    validated: !!validated,
+  };
+};
+
+
 
 module.exports = {
   getPersonalData, upsertPersonalData,
   listEducation, createEducation, updateEducation, deleteEducation,
   listWork, createWork, updateWork, deleteWork,
   getManagement, upsertManagement, isManagementEnabled,
+  getAttachmentFile,
   getSummary,
+  setSectionValidation, // OBS #2
 };

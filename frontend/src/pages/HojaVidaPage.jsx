@@ -1,17 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { authService } from '../services/authService';
 import { cvService, readFileAsBase64 } from '../services/cvService';
 
 const SECTIONS = [
-  { key: 'personal',   label: '1. Datos personales' },
-  { key: 'education',  label: '2. Formación académica' },
-  { key: 'work',       label: '3. Experiencia laboral' },
+  { key: 'personal', label: '1. Datos personales' },
+  { key: 'education', label: '2. Formación académica' },
+  { key: 'work', label: '3. Experiencia laboral' },
   { key: 'management', label: '4. Gerencia Pública' },
 ];
 
-const ALLOWED_MIME = ['application/pdf'];
+const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/jpg'];
+const ACCEPTED_SUPPORT_FILES = 'application/pdf,image/jpeg,.jpg,.jpeg';
 
 // HU-012: marcador visual de obligatorio
 const Req = () => <span style={{ color: '#e53935', marginLeft: 2 }}>*</span>;
@@ -20,7 +21,19 @@ export default function HojaVidaPage() {
   const [tab, setTab] = useState('personal');
   const [docTypes, setDocTypes] = useState([]);
   const [summary, setSummary] = useState(null);
+  const [managementEnabled, setManagementEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [printingPdf, setPrintingPdf] = useState(false);
+  const [preview, setPreview] = useState({
+    open: false,
+    loading: false,
+    url: '',
+    mime: '',
+    title: '',
+    error: '',
+  });
+  const previewUrlRef = useRef(null);
 
   const refresh = async () => {
     const [{ data: dt }, { data: sm }] = await Promise.all([
@@ -29,23 +42,179 @@ export default function HojaVidaPage() {
     ]);
     setDocTypes(dt.data);
     setSummary(sm.data);
+    setManagementEnabled(!!sm.data?.managementEnabled);
     setLoading(false);
+  };
+  
+  const onSaveExperience = async (data) => {
+    const res = await cvService.saveWorkExperience(data);
+    if (res.success) {
+      toast.success("Experiencia guardada");
+      await refresh(); // Esto volverá a llamar al summary y activará la sección 4 si aplica
+    }
   };
 
   useEffect(() => { refresh(); }, []);
+
+  useEffect(() => {
+    if (tab === 'management' && !managementEnabled) {
+      setTab('personal');
+    }
+  }, [managementEnabled, tab]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+      }
+    };
+  }, []);
+
+  const closePreview = () => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+    setPreview({ open: false, loading: false, url: '', mime: '', title: '', error: '' });
+  };
+
+  const openPreview = async ({ section, id, fileName }) => {
+    try {
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+        previewUrlRef.current = null;
+      }
+
+      setPreview({
+        open: true,
+        loading: true,
+        url: '',
+        mime: '',
+        title: fileName || 'Documento adjunto',
+        error: '',
+      });
+
+      const response = await cvService.getAttachmentPreview(section, id);
+      const blobUrl = URL.createObjectURL(response.data);
+      previewUrlRef.current = blobUrl;
+
+      setPreview({
+        open: true,
+        loading: false,
+        url: blobUrl,
+        mime: response.data.type || response.headers?.['content-type'] || '',
+        title: fileName || 'Documento adjunto',
+        error: '',
+      });
+    } catch (err) {
+      setPreview({
+        open: true,
+        loading: false,
+        url: '',
+        mime: '',
+        title: fileName || 'Documento adjunto',
+        error: err.response?.data?.message || 'No se pudo cargar el documento para previsualizar',
+      });
+    }
+  };
+
+  const getPdfExport = async () => {
+    const response = await cvService.exportCvPdf();
+    return response.data;
+  };
+
+  const handleDownloadCv = async () => {
+    setExportingPdf(true);
+    try {
+      const blob = await getPdfExport();
+      const url = URL.createObjectURL(blob);
+      const date = new Date().toISOString().slice(0, 10);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `hoja_vida_${date}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast.success('Descarga iniciada');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'No fue posible descargar la hoja de vida');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
+  const handlePrintCv = async () => {
+    setPrintingPdf(true);
+    try {
+      const blob = await getPdfExport();
+      const url = URL.createObjectURL(blob);
+      const printWindow = window.open('', '_blank');
+
+      if (!printWindow) {
+        URL.revokeObjectURL(url);
+        toast.error('Permita ventanas emergentes para imprimir la hoja de vida');
+        return;
+      }
+
+      printWindow.document.write(`
+        <!doctype html>
+        <html>
+          <head>
+            <title>Imprimir hoja de vida</title>
+            <style>
+              html, body { margin: 0; padding: 0; height: 100%; }
+              iframe { border: 0; width: 100%; height: 100%; }
+            </style>
+          </head>
+          <body>
+            <iframe id="cv-pdf" src="${url}"></iframe>
+            <script>
+              const iframe = document.getElementById('cv-pdf');
+              iframe.onload = () => {
+                setTimeout(() => {
+                  window.focus();
+                  window.print();
+                }, 250);
+              };
+            <\/script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+
+      const cleanBlobUrl = () => URL.revokeObjectURL(url);
+      printWindow.addEventListener('afterprint', cleanBlobUrl, { once: true });
+      setTimeout(cleanBlobUrl, 120000);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'No fue posible abrir la impresión');
+    } finally {
+      setPrintingPdf(false);
+    }
+  };
 
   if (loading) return <div style={styles.loading}>Cargando…</div>;
 
   return (
     <div style={styles.page}>
-      <h1 style={styles.pageTitle}>Hoja de Vida</h1>
+      <div style={styles.pageHeading}>
+        <h1 style={styles.pageTitle}>Hoja de Vida</h1>
+        <div style={styles.exportActions}>
+          <button type="button" style={styles.btnSecondary} onClick={handlePrintCv} disabled={printingPdf || exportingPdf}>
+            {printingPdf ? 'Abriendo impresión…' : '🖨 Imprimir'}
+          </button>
+          <button type="button" style={styles.btn} onClick={handleDownloadCv} disabled={exportingPdf || printingPdf}>
+            {exportingPdf ? 'Generando PDF…' : '⬇ Descargar PDF'}
+          </button>
+        </div>
+      </div>
       <p style={styles.pageSubtitle}>
-        Diligencie cada sección y guarde su avance. Los campos marcados con <Req /> son obligatorios.
+        Diligencie cada sección y guarde su avance. Puede adjuntar soportes en PDF o JPG (máx. 2 MB). Los campos marcados con <Req /> son obligatorios.
       </p>
 
       <div style={styles.tabs}>
         {SECTIONS.map(s => {
-          if (s.key === 'management' && !summary?.managementEnabled) return null;
+          if (s.key === 'management' && !managementEnabled) return null;
           return (
             <button key={s.key} onClick={() => setTab(s.key)}
               style={{ ...styles.tab, ...(tab === s.key ? styles.tabActive : {}) }}>
@@ -56,39 +225,42 @@ export default function HojaVidaPage() {
       </div>
 
       <div style={styles.tabContent}>
-        {tab === 'personal'   && <PersonalSection   summary={summary} docTypes={docTypes} onSaved={refresh} />}
-        {tab === 'education'  && <EducationSection  summary={summary} onSaved={refresh} />}
-        {tab === 'work'       && <WorkSection       summary={summary} onSaved={refresh} />}
-        {tab === 'management' && <ManagementSection summary={summary} onSaved={refresh} />}
+        {tab === 'personal' && <PersonalSection summary={summary} docTypes={docTypes} onSaved={refresh} onPreview={openPreview} />}
+        {tab === 'education' && <EducationSection summary={summary} onSaved={refresh} onPreview={openPreview} />}
+        {tab === 'work' && <WorkSection summary={summary} onSaved={refresh} onPreview={openPreview} />}
+        {tab === 'management' && <ManagementSection summary={summary} onSaved={refresh} onPreview={openPreview} />}
       </div>
+
+      <DocumentPreviewModal preview={preview} onClose={closePreview} />
     </div>
   );
 }
 
 // ─── HU-006 / HU-007 ────────────────────────────────────────────────────────
-function PersonalSection({ summary, docTypes, onSaved }) {
+function PersonalSection({ summary, docTypes, onSaved, onPreview }) {
   const initial = summary?.personal || {};
   const { register, handleSubmit, watch, formState: { errors }, reset } = useForm({
     defaultValues: {
-      firstName:        initial.first_name        || '',
-      middleName:       initial.middle_name       || '',
-      lastName:         initial.last_name         || '',
-      secondLastName:   initial.second_last_name  || '',
-      documentTypeId:   initial.document_type_id  || '',
-      documentNumber:   initial.document_number   || '',
-      birthDate:        initial.birth_date        || '',
-      gender:           initial.gender            || '',
-      phone:            initial.phone             || '',
-      mobile:           initial.mobile            || '',
-      email:            initial.email             || '',
-      country:          initial.country           || 'Colombia',
-      department:       initial.department        || '',
-      city:             initial.city              || '',
-      zoneType:         initial.zone_type         || 'URBANA',
-      address:          initial.address           || '',
+      firstName: initial.first_name || '',
+      middleName: initial.middle_name || '',
+      lastName: initial.last_name || '',
+      secondLastName: initial.second_last_name || '',
+      documentTypeId: initial.document_type_id || '',
+      documentNumber: initial.document_number || '',
+      birthDate: initial.birth_date || '',
+      gender: initial.gender || '',
+      phone: initial.phone || '',
+      mobile: initial.mobile || '',
+      email: initial.email || '',
+      country: initial.country || 'Colombia',
+      department: initial.department || '',
+      city: initial.city || '',
+      zoneType: initial.zone_type || 'URBANA',
+      address: initial.address || '',
       addressComplement: initial.address_complement || '',
     },
   });
+  const [file, setFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const zoneType = watch('zoneType');
   const isValidated = !!initial.validated;
@@ -96,10 +268,15 @@ function PersonalSection({ summary, docTypes, onSaved }) {
   const onSubmit = async (values) => {
     setSaving(true);
     try {
-      await cvService.savePersonal({
+      let payload = {
         ...values,
         documentTypeId: parseInt(values.documentTypeId),
-      });
+      };
+      if (file) {
+        const att = await readFileAsBase64(file, { allowedMime: ALLOWED_MIME });
+        payload = { ...payload, fileBase64: att.base64, fileMime: att.mime, fileName: att.name };
+      }
+      await cvService.savePersonal(payload);
       toast.success('Datos personales guardados');
       onSaved();
     } catch (err) {
@@ -202,6 +379,25 @@ function PersonalSection({ summary, docTypes, onSaved }) {
               <input style={styles.input} placeholder="Ej: Apto 502, Torre B" {...register('addressComplement')} />
             </Field>
           )}
+          <Field label="Soporte de la sección (PDF o JPG, máx. 2 MB)" full>
+            <input
+              type="file"
+              accept={ACCEPTED_SUPPORT_FILES}
+              onChange={e => setFile(e.target.files?.[0] || null)}
+            />
+            {initial.attachment_name && (
+              <span style={styles.fileHint}>
+                Archivo actual: {initial.attachment_name}
+                <button
+                  type="button"
+                  style={styles.previewBtnInline}
+                  onClick={() => onPreview({ section: 'personal', fileName: initial.attachment_name })}
+                >
+                  👁 Mostrar documento
+                </button>
+              </span>
+            )}
+          </Field>
         </div>
       </fieldset>
 
@@ -215,7 +411,7 @@ function PersonalSection({ summary, docTypes, onSaved }) {
 }
 
 // ─── HU-008 ─────────────────────────────────────────────────────────────────
-function EducationSection({ summary, onSaved }) {
+function EducationSection({ summary, onSaved, onPreview }) {
   const items = summary?.education || [];
   const [showForm, setShowForm] = useState(items.length === 0);
 
@@ -229,6 +425,8 @@ function EducationSection({ summary, onSaved }) {
             <ItemRow key={it.id} title={`${it.title} — ${it.institution}`}
               meta={`${it.level}${it.start_date ? ` · ${it.start_date} — ${it.end_date || 'Actual'}` : ''}${it.attachment_name ? ` · 📎 ${it.attachment_name}` : ''}`}
               validated={!!it.validated}
+              canPreview={!!it.attachment_name}
+              onPreview={() => onPreview({ section: 'education', id: it.id, fileName: it.attachment_name })}
               onDelete={async () => {
                 if (!window.confirm('¿Eliminar este registro?')) return;
                 try { await cvService.deleteEducation(it.id); toast.success('Eliminado'); onSaved(); }
@@ -295,8 +493,8 @@ function EducationForm({ onSaved, onCancel }) {
         <Field label="N° tarjeta profesional" full>
           <input style={styles.input} {...register('professionalCard')} />
         </Field>
-        <Field label="Soporte (PDF, máx. 2 MB)" full>
-          <input type="file" accept="application/pdf"
+        <Field label="Soporte (PDF o JPG, máx. 2 MB)" full>
+          <input type="file" accept={ACCEPTED_SUPPORT_FILES}
             onChange={e => setFile(e.target.files?.[0] || null)} />
         </Field>
       </div>
@@ -312,7 +510,7 @@ function EducationForm({ onSaved, onCancel }) {
 }
 
 // ─── HU-009 ─────────────────────────────────────────────────────────────────
-function WorkSection({ summary, onSaved }) {
+function WorkSection({ summary, onSaved, onPreview }) {
   const items = summary?.work || [];
   const [showForm, setShowForm] = useState(items.length === 0);
 
@@ -326,6 +524,8 @@ function WorkSection({ summary, onSaved }) {
             <ItemRow key={it.id} title={`${it.position} — ${it.employer}`}
               meta={`${it.experience_type} · ${it.start_date} — ${it.is_current ? 'Actual' : (it.end_date || '—')}${it.attachment_name ? ` · 📎 ${it.attachment_name}` : ''}`}
               validated={!!it.validated}
+              canPreview={!!it.attachment_name}
+              onPreview={() => onPreview({ section: 'work', id: it.id, fileName: it.attachment_name })}
               onDelete={async () => {
                 if (!window.confirm('¿Eliminar este registro?')) return;
                 try { await cvService.deleteWork(it.id); toast.success('Eliminado'); onSaved(); }
@@ -400,8 +600,8 @@ function WorkForm({ onSaved, onCancel }) {
         <Field label="Funciones / responsabilidades" full>
           <textarea style={{ ...styles.input, minHeight: 70 }} {...register('responsibilities')} />
         </Field>
-        <Field label="Certificación (PDF, máx. 2 MB)" full>
-          <input type="file" accept="application/pdf"
+        <Field label="Certificación (PDF o JPG, máx. 2 MB)" full>
+          <input type="file" accept={ACCEPTED_SUPPORT_FILES}
             onChange={e => setFile(e.target.files?.[0] || null)} />
         </Field>
       </div>
@@ -417,23 +617,29 @@ function WorkForm({ onSaved, onCancel }) {
 }
 
 // ─── HU-010 ─────────────────────────────────────────────────────────────────
-function ManagementSection({ summary, onSaved }) {
+function ManagementSection({ summary, onSaved, onPreview }) {
   const initial = summary?.management || {};
   const { register, handleSubmit, formState: { errors } } = useForm({
     defaultValues: {
       hierarchicalLevel: initial.hierarchical_level || '',
-      positionName:      initial.position_name      || '',
-      entityName:        initial.entity_name        || '',
-      startDate:         initial.start_date         || '',
+      positionName: initial.position_name || '',
+      entityName: initial.entity_name || '',
+      startDate: initial.start_date || '',
     },
   });
+  const [file, setFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const isValidated = !!initial.validated;
 
   const onSubmit = async (values) => {
     setSaving(true);
     try {
-      await cvService.saveManagement(values);
+      let payload = { ...values };
+      if (file) {
+        const att = await readFileAsBase64(file, { allowedMime: ALLOWED_MIME });
+        payload = { ...payload, fileBase64: att.base64, fileMime: att.mime, fileName: att.name };
+      }
+      await cvService.saveManagement(payload);
       toast.success('Sección Gerencia Pública guardada');
       onSaved();
     } catch (err) {
@@ -466,6 +672,25 @@ function ManagementSection({ summary, onSaved }) {
           </Field>
           <Field label="Fecha de posesión" required error={errors.startDate?.message}>
             <input style={styles.input} type="date" {...register('startDate', { required: 'Requerido' })} />
+          </Field>
+          <Field label="Soporte de la sección (PDF o JPG, máx. 2 MB)" full>
+            <input
+              type="file"
+              accept={ACCEPTED_SUPPORT_FILES}
+              onChange={e => setFile(e.target.files?.[0] || null)}
+            />
+            {initial.attachment_name && (
+              <span style={styles.fileHint}>
+                Archivo actual: {initial.attachment_name}
+                <button
+                  type="button"
+                  style={styles.previewBtnInline}
+                  onClick={() => onPreview({ section: 'management', fileName: initial.attachment_name })}
+                >
+                  👁 Mostrar documento
+                </button>
+              </span>
+            )}
           </Field>
         </div>
       </fieldset>
@@ -501,23 +726,73 @@ const ValidatedBanner = () => (
   </div>
 );
 
-const ItemRow = ({ title, meta, validated, onDelete }) => (
+const ItemRow = ({ title, meta, validated, canPreview, onPreview, onDelete }) => (
   <div style={styles.itemRow}>
     <div style={{ flex: 1 }}>
       <p style={{ margin: 0, fontWeight: 600, color: '#003366' }}>{title}</p>
       <p style={{ margin: '4px 0 0', color: '#666', fontSize: 12 }}>{meta}</p>
     </div>
-    {validated
-      ? <span style={styles.validatedBadge}>✓ Validado</span>
-      : <button type="button" style={styles.deleteBtn} onClick={onDelete}>Eliminar</button>}
+    <div style={styles.itemActions}>
+      {canPreview && (
+        <button type="button" style={styles.previewBtn} onClick={onPreview}>
+          👁 Mostrar documento
+        </button>
+      )}
+      {validated
+        ? <span style={styles.validatedBadge}>✓ Validado</span>
+        : <button type="button" style={styles.deleteBtn} onClick={onDelete}>Eliminar</button>}
+    </div>
   </div>
 );
+
+const DocumentPreviewModal = ({ preview, onClose }) => {
+  if (!preview.open) return null;
+
+  const isPdf = preview.mime.includes('pdf');
+  const isImage = preview.mime.includes('image/');
+
+  return (
+    <div style={styles.modalBackdrop} onClick={onClose} role="presentation">
+      <div style={styles.modalCard} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Previsualización de documento">
+        <div style={styles.modalHeader}>
+          <div>
+            <p style={styles.modalTitle}>Previsualización de documento</p>
+            <p style={styles.modalSubTitle}>{preview.title}</p>
+          </div>
+          <button type="button" style={styles.btnGhost} onClick={onClose}>Cerrar</button>
+        </div>
+
+        <div style={styles.previewBody}>
+          {preview.loading && <p style={styles.previewInfo}>Cargando documento…</p>}
+          {!preview.loading && preview.error && <p style={{ ...styles.previewInfo, color: '#e53935' }}>{preview.error}</p>}
+
+          {!preview.loading && !preview.error && preview.url && isPdf && (
+            <iframe title="Previsualización PDF" src={preview.url} style={styles.previewFrame} />
+          )}
+
+          {!preview.loading && !preview.error && preview.url && isImage && (
+            <img alt="Previsualización del documento" src={preview.url} style={styles.previewImage} />
+          )}
+
+          {!preview.loading && !preview.error && preview.url && !isPdf && !isImage && (
+            <p style={styles.previewInfo}>No hay vista previa para este tipo de archivo.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const styles = {
   loading: { padding: 40, textAlign: 'center', color: '#666' },
   page: { maxWidth: 950, margin: '0 auto' },
+  pageHeading: {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+    flexWrap: 'wrap',
+  },
   pageTitle: { fontSize: 24, fontWeight: 800, color: '#003366', margin: '0 0 6px' },
   pageSubtitle: { color: '#666', fontSize: 14, margin: '0 0 24px' },
+  exportActions: { display: 'flex', gap: 8, flexWrap: 'wrap' },
   tabs: { display: 'flex', gap: 4, flexWrap: 'wrap' },
   tab: {
     padding: '10px 16px', background: '#e8edf4', border: 'none', borderRadius: '8px 8px 0 0',
@@ -536,6 +811,7 @@ const styles = {
     fontSize: 14, color: '#333', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
   },
   error: { display: 'block', fontSize: 12, color: '#e53935', marginTop: 4 },
+  fileHint: { display: 'block', marginTop: 6, color: '#666', fontSize: 12 },
   btn: {
     padding: '11px 24px', background: 'linear-gradient(135deg, #003366, #005599)',
     color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer',
@@ -555,6 +831,15 @@ const styles = {
     display: 'flex', alignItems: 'center', gap: 12,
     background: '#f8f9fa', border: '1px solid #e8e8e8', borderRadius: 8, padding: '12px 14px',
   },
+  itemActions: { display: 'flex', gap: 8, alignItems: 'center' },
+  previewBtnInline: {
+    marginLeft: 10, background: 'transparent', color: '#003366', border: 'none',
+    textDecoration: 'underline', cursor: 'pointer', fontSize: 12, padding: 0,
+  },
+  previewBtn: {
+    background: '#eaf3ff', color: '#003366', border: '1px solid #bfd9ff',
+    borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12,
+  },
   deleteBtn: {
     background: 'transparent', color: '#e53935', border: '1px solid #e53935',
     borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12,
@@ -566,4 +851,33 @@ const styles = {
     background: '#fff3cd', border: '1px solid #ffc107', borderRadius: 8,
     padding: '10px 14px', fontSize: 13, color: '#856404', marginBottom: 16,
   },
+  modalBackdrop: {
+    position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.55)', zIndex: 40,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14,
+  },
+  modalCard: {
+    width: '100%', maxWidth: 980, background: '#fff', borderRadius: 10,
+    boxShadow: '0 18px 50px rgba(0,0,0,0.32)', overflow: 'hidden',
+  },
+  modalHeader: {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    borderBottom: '1px solid #ececec', padding: '12px 16px',
+  },
+  modalTitle: { margin: 0, fontSize: 16, fontWeight: 700, color: '#003366' },
+  modalSubTitle: {
+    margin: '2px 0 0', fontSize: 12, color: '#666', maxWidth: 680,
+    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+  },
+  previewBody: {
+    padding: 12, background: '#f4f7fb', minHeight: 450,
+    maxHeight: 'calc(100vh - 150px)', overflow: 'auto',
+  },
+  previewFrame: {
+    width: '100%', minHeight: 640, border: '1px solid #dbe3ef', borderRadius: 8, background: '#fff',
+  },
+  previewImage: {
+    width: '100%', maxHeight: 'calc(100vh - 220px)', objectFit: 'contain',
+    background: '#fff', border: '1px solid #dbe3ef', borderRadius: 8,
+  },
+  previewInfo: { fontSize: 14, color: '#445', margin: 0 },
 };

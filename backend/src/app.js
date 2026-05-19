@@ -52,6 +52,10 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/cv', require('./routes/cvRoutes'));
 
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./config/swagger');//esto tiene que corregirse, intento de cambio de ruta, pero no se si es correcto, revisar
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
 // ─── Manejo de errores ────────────────────────────────────────────────────────
 app.use(notFound);
 app.use(errorHandler);

@@ -139,14 +139,16 @@ const initDb = async () => {
 
   _db = withAutosave(wrapper);
 
+  const ensureColumn = (table, column, definition) => {
+    const cols = _db.prepare(`PRAGMA table_info(${table})`).all();
+    if (cols.length > 0 && !cols.some(c => c.name === column)) {
+      _db.exec(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
+    }
+  };
+
   // Auto-migración: columna welcome_email_sent (solo si la tabla ya existe)
-  const cols = _db.prepare('PRAGMA table_info(users)').all();
-  if (cols.length > 0 && !cols.some(c => c.name === 'welcome_email_sent')) {
-    _db.exec('ALTER TABLE users ADD COLUMN welcome_email_sent INTEGER NOT NULL DEFAULT 0');
-  }
-  if (cols.length > 0 && !cols.some(c => c.name === 'gerencia_publica_enabled')) {
-    _db.exec('ALTER TABLE users ADD COLUMN gerencia_publica_enabled INTEGER NOT NULL DEFAULT 0');
-  }
+  ensureColumn('users', 'welcome_email_sent', 'welcome_email_sent INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('users', 'gerencia_publica_enabled', 'gerencia_publica_enabled INTEGER NOT NULL DEFAULT 0');
 
   // Auto-migración: tablas Hoja de Vida (Módulo 2)
   _db.exec(`
@@ -169,6 +171,8 @@ const initDb = async () => {
       zone_type            TEXT NOT NULL,
       address              TEXT,
       address_complement   TEXT,
+      attachment_path      TEXT,
+      attachment_name      TEXT,
       validated            INTEGER NOT NULL DEFAULT 0,
       validated_by         TEXT,
       validated_at         TEXT,
@@ -216,6 +220,8 @@ const initDb = async () => {
       position_name        TEXT NOT NULL,
       entity_name          TEXT NOT NULL,
       start_date           TEXT NOT NULL,
+      attachment_path      TEXT,
+      attachment_name      TEXT,
       validated            INTEGER NOT NULL DEFAULT 0,
       validated_by         TEXT,
       validated_at         TEXT,
@@ -225,6 +231,11 @@ const initDb = async () => {
     CREATE INDEX IF NOT EXISTS idx_cv_education_user ON cv_education(user_id);
     CREATE INDEX IF NOT EXISTS idx_cv_work_user      ON cv_work_experience(user_id);
   `);
+
+  ensureColumn('cv_personal_data', 'attachment_path', 'attachment_path TEXT');
+  ensureColumn('cv_personal_data', 'attachment_name', 'attachment_name TEXT');
+  ensureColumn('cv_management', 'attachment_path', 'attachment_path TEXT');
+  ensureColumn('cv_management', 'attachment_name', 'attachment_name TEXT');
 
   return _db;
 };

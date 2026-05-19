@@ -22,6 +22,15 @@ export const cvService = {
   // HU-010
   getManagement:     ()         => api.get('/cv/management'),
   saveManagement:    (data)     => api.put('/cv/management', data),
+
+  // HU-014
+  getAttachmentPreview: (section, id) => {
+    const suffix = id ? `/${id}` : '';
+    return api.get(`/cv/attachments/${section}${suffix}`, { responseType: 'blob' });
+  },
+
+  // HU-015
+  exportCvPdf: () => api.get('/cv/export/pdf', { responseType: 'blob' }),
 };
 
 // Util: file → { base64, mime, name } con validación 2MB y formato
