@@ -536,33 +536,21 @@ Ejemplo: `feature/hu-006-personal-info`.
 
 ---
 
-### 🔄 OBS #3 — API mezcla snake_case y camelCase (PENDIENTE — siguiente sprint)
+### 🔄 OBS #3 — API mezcla snake_case y camelCase (Finalizado por el Scrum Master)
 
 **Síntoma**: las respuestas devuelven `first_name` (snake_case de BD) pero los bodies aceptan `firstName` (camelCase). Inconsistencia.
 
-**Solución propuesta**: crear un mapper `dbToApi(row)` en cada service que convierta snake_case → camelCase antes de responder.
+**Solución **: crear un mapper `dbToApi(row)` en cada service que convierta snake_case → camelCase antes de responder.
 
 ---
 
-### 🎨 OBS #4 — Diseño del PDF de exportación (PENDIENTE — en curso por otro miembro)
+### 🎨 OBS #4 — Diseño del PDF de exportación (Finalizado por otro miembro)
 
-**Síntoma**: el PDF generado por `cvExportService.js` con `pdfkit` es funcional pero no replica el diseño del SIGEP II oficial.
+**Síntoma**: el PDF generado por `cvExportService.js` con `pdfkit` es funcional pero no replica ni muestra un diseño parecido del SIGEP II oficial.
 
-**En curso**: refactor del template del PDF.
+**Finalizado**: refactor del template del PDF.
 
----
 
-## Observaciones pendientes (Roadmap)
-
-| ID | Prioridad | Descripción |
-|---|---|---|
-| OBS #3 | Media | Normalizar API a camelCase en respuestas (frontend ya lo espera) |
-| OBS #4 | Alta | Mejorar diseño visual del PDF de HV para parecer al SIGEP oficial |
-| — | Baja | Migrar `express-validator` a `express-openapi-validator` para usar el spec como fuente única |
-| — | Baja | Generar cliente TypeScript desde OpenAPI con `orval` o similar |
-| — | Baja | Auditoría de seguridad: rotar `JWT_SECRET` periódicamente, agregar 2FA |
-
----
 
 ## Equipo
 
@@ -571,9 +559,12 @@ Proyecto Informático, semestre 2026-1.
 
 | Rol | Responsable |
 |---|---|
-| Scrum Master + Backend Auth (Módulo 1) | Juan Baloco |
-| Backend Hoja de Vida (Módulo 2) | [Compañero/a 2] |
-| Frontend + Diseño PDF | [Compañero/a 3] |
+| Scrum Master + Frontend + Backend Auth (Módulo 1 y 2) | Juan Baloco |
+| Backend Hoja de Vida (Módulo 2) | Juan Andres Montealegre |
+| Backend Hoja de Vida (Módulo 2) | Santiago Torralba |
+| Frontend + Backend Hoja de Vida (Módulo 2) | Diego Alejandro quintero |
+| Backend Hoja de Vida (Módulo 2) | Santiago Lopez Lopez |
+| Frontend + Diseño PDF | Santiago Lopez Lopez] |
 
 ---
 
