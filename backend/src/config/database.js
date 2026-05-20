@@ -5,19 +5,19 @@ const fs = require('fs');
 let _db = null;
 const DB_PATH = () => path.resolve(process.env.DB_PATH || './database/sigep2.db');
 
-// ── Capa de compatibilidad: expone la misma API que better-sqlite3 ────────
 class SqlJsWrapper {
   constructor(sqlJsDb) {
     this._db = sqlJsDb;
+    this._inTransaction = false;
   }
 
   pragma(str) {
     this._db.run(`PRAGMA ${str}`);
   }
 
-  // Devuelve un objeto "statement" con .run(), .get(), .all()
   prepare(sql) {
     const db = this._db;
+
     return {
       run: (...params) => {
         db.run(sql, this._flatten(params));
@@ -26,40 +26,45 @@ class SqlJsWrapper {
       get: (...params) => {
         const stmt = db.prepare(sql);
         stmt.bind(this._flatten(params));
+
         if (stmt.step()) {
           const row = stmt.getAsObject();
           stmt.free();
           return row;
         }
+
         stmt.free();
         return undefined;
       },
       all: (...params) => {
         const stmt = db.prepare(sql);
         stmt.bind(this._flatten(params));
+
         const rows = [];
         while (stmt.step()) rows.push(stmt.getAsObject());
+
         stmt.free();
         return rows;
       },
     };
   }
 
-  // Ejecuta múltiples sentencias SQL separadas por punto y coma
   exec(sql) {
-    this._db.run(sql);
+    this._db.exec(sql);
   }
 
-  // Transacciones: ejecuta fn dentro de BEGIN/COMMIT, rollback si falla
   transaction(fn) {
     return (...args) => {
       this._db.run('BEGIN');
       this._inTransaction = true;
+
       try {
         fn(...args);
         this._db.run('COMMIT');
       } catch (e) {
-        try { this._db.run('ROLLBACK'); } catch (_) {}
+        try {
+          this._db.run('ROLLBACK');
+        } catch (_) {}
         throw e;
       } finally {
         this._inTransaction = false;
@@ -67,46 +72,54 @@ class SqlJsWrapper {
     };
   }
 
-  // Persiste la DB en disco
   save() {
     const dbPath = DB_PATH();
+    const dbDir = path.dirname(dbPath);
+
+    if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
+
     const data = this._db.export();
     fs.writeFileSync(dbPath, Buffer.from(data));
   }
 
-  // Aplanar array de un solo elemento si viene de rest params
   _flatten(params) {
     if (params.length === 1 && Array.isArray(params[0])) return params[0];
     return params;
   }
 }
 
-// ── Intercepta .run/.get/.all para auto-guardar en disco ─────────────────
 const withAutosave = (wrapper) => {
-  const original = wrapper.prepare.bind(wrapper);
+  const originalPrepare = wrapper.prepare.bind(wrapper);
+
   wrapper.prepare = (sql) => {
-    const stmt = original(sql);
-    const isMutation = /^\s*(INSERT|UPDATE|DELETE|CREATE|DROP|PRAGMA)/i.test(sql);
+    const stmt = originalPrepare(sql);
+    const isMutation = /^\s*(INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|PRAGMA)/i.test(sql);
+
     if (isMutation) {
-      const origRun = stmt.run.bind(stmt);
+      const originalRun = stmt.run.bind(stmt);
+
       stmt.run = (...args) => {
-        const result = origRun(...args);
+        const result = originalRun(...args);
         if (!wrapper._inTransaction) wrapper.save();
         return result;
       };
     }
+
     return stmt;
   };
 
-  const origExec = wrapper.exec.bind(wrapper);
+  const originalExec = wrapper.exec.bind(wrapper);
+
   wrapper.exec = (sql) => {
-    origExec(sql);
+    originalExec(sql);
     wrapper.save();
   };
 
-  const origTransaction = wrapper.transaction.bind(wrapper);
+  const originalTransaction = wrapper.transaction.bind(wrapper);
+
   wrapper.transaction = (fn) => {
-    const txFn = origTransaction(fn);
+    const txFn = originalTransaction(fn);
+
     return (...args) => {
       txFn(...args);
       wrapper.save();
@@ -116,17 +129,17 @@ const withAutosave = (wrapper) => {
   return wrapper;
 };
 
-// ── Inicialización asíncrona (llamar una vez al arranque) ─────────────────
 const initDb = async () => {
   if (_db) return _db;
 
   const SQL = await initSqlJs();
   const dbPath = DB_PATH();
-  const dbDir  = path.dirname(dbPath);
+  const dbDir = path.dirname(dbPath);
 
   if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
 
   let sqlJsDb;
+
   if (fs.existsSync(dbPath)) {
     const fileBuffer = fs.readFileSync(dbPath);
     sqlJsDb = new SQL.Database(fileBuffer);
@@ -141,16 +154,15 @@ const initDb = async () => {
 
   const ensureColumn = (table, column, definition) => {
     const cols = _db.prepare(`PRAGMA table_info(${table})`).all();
+
     if (cols.length > 0 && !cols.some(c => c.name === column)) {
-      _db.exec(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
+      _db.exec(`ALTER TABLE ${table} ADD COLUMN ${definition};`);
     }
   };
 
-  // Auto-migración: columna welcome_email_sent (solo si la tabla ya existe)
   ensureColumn('users', 'welcome_email_sent', 'welcome_email_sent INTEGER NOT NULL DEFAULT 0');
   ensureColumn('users', 'gerencia_publica_enabled', 'gerencia_publica_enabled INTEGER NOT NULL DEFAULT 0');
 
-  // Auto-migración: tablas Hoja de Vida (Módulo 2)
   _db.exec(`
     CREATE TABLE IF NOT EXISTS cv_personal_data (
       user_id              TEXT PRIMARY KEY,
@@ -173,12 +185,15 @@ const initDb = async () => {
       address_complement   TEXT,
       attachment_path      TEXT,
       attachment_name      TEXT,
+      photo_path           TEXT,
+      photo_name           TEXT,
       validated            INTEGER NOT NULL DEFAULT 0,
       validated_by         TEXT,
       validated_at         TEXT,
       created_at           TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
     CREATE TABLE IF NOT EXISTS cv_education (
       id                   INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id              TEXT NOT NULL,
@@ -196,6 +211,7 @@ const initDb = async () => {
       created_at           TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
     CREATE TABLE IF NOT EXISTS cv_work_experience (
       id                   INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id              TEXT NOT NULL,
@@ -214,6 +230,7 @@ const initDb = async () => {
       created_at           TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
     CREATE TABLE IF NOT EXISTS cv_management (
       user_id              TEXT PRIMARY KEY,
       hierarchical_level   TEXT NOT NULL,
@@ -228,19 +245,22 @@ const initDb = async () => {
       created_at           TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
     CREATE INDEX IF NOT EXISTS idx_cv_education_user ON cv_education(user_id);
-    CREATE INDEX IF NOT EXISTS idx_cv_work_user      ON cv_work_experience(user_id);
+    CREATE INDEX IF NOT EXISTS idx_cv_work_user ON cv_work_experience(user_id);
   `);
 
   ensureColumn('cv_personal_data', 'attachment_path', 'attachment_path TEXT');
   ensureColumn('cv_personal_data', 'attachment_name', 'attachment_name TEXT');
+  ensureColumn('cv_personal_data', 'photo_path', 'photo_path TEXT');
+  ensureColumn('cv_personal_data', 'photo_name', 'photo_name TEXT');
+
   ensureColumn('cv_management', 'attachment_path', 'attachment_path TEXT');
   ensureColumn('cv_management', 'attachment_name', 'attachment_name TEXT');
 
   return _db;
 };
 
-// ── Obtener DB (sincrónico una vez inicializada) ───────────────────────────
 const getDb = () => {
   if (!_db) throw new Error('Database not initialized. Call initDb() first.');
   return _db;

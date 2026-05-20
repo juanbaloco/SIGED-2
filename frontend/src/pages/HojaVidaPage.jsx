@@ -5,17 +5,32 @@ import { authService } from '../services/authService';
 import { cvService, readFileAsBase64 } from '../services/cvService';
 
 const SECTIONS = [
-  { key: 'personal', label: '1. Datos personales' },
-  { key: 'education', label: '2. Formación académica' },
-  { key: 'work', label: '3. Experiencia laboral' },
+  { key: 'personal',   label: '1. Datos personales' },
+  { key: 'education',  label: '2. Formación académica' },
+  { key: 'work',       label: '3. Experiencia laboral' },
   { key: 'management', label: '4. Gerencia Pública' },
 ];
 
-const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/jpg'];
+const ALLOWED_MIME           = ['application/pdf', 'image/jpeg', 'image/jpg'];
+const ALLOWED_PHOTO_MIME     = ['image/jpeg', 'image/jpg', 'image/png'];
 const ACCEPTED_SUPPORT_FILES = 'application/pdf,image/jpeg,.jpg,.jpeg';
+const ACCEPTED_PHOTO_FILES   = 'image/jpeg,image/png,.jpg,.jpeg,.png';
+const MAX_FILE_BYTES         = 2 * 1024 * 1024; // 2 MB
 
 // HU-012: marcador visual de obligatorio
 const Req = () => <span style={{ color: '#e53935', marginLeft: 2 }}>*</span>;
+
+// ─── Validación de archivo (HU-013 CA-001/CA-002/CA-003) ─────────────────────
+const validateFile = (file, allowedMime) => {
+  if (!file) return null;
+  if (!allowedMime.includes(file.type)) {
+    return `Formato no permitido. Use: ${allowedMime.join(', ')}`;
+  }
+  if (file.size > MAX_FILE_BYTES) {
+    return 'El archivo supera el límite de 2 MB.';
+  }
+  return null;
+};
 
 export default function HojaVidaPage() {
   const [tab, setTab] = useState('personal');
@@ -26,12 +41,7 @@ export default function HojaVidaPage() {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [printingPdf, setPrintingPdf] = useState(false);
   const [preview, setPreview] = useState({
-    open: false,
-    loading: false,
-    url: '',
-    mime: '',
-    title: '',
-    error: '',
+    open: false, loading: false, url: '', mime: '', title: '', error: '',
   });
   const previewUrlRef = useRef(null);
 
@@ -45,28 +55,16 @@ export default function HojaVidaPage() {
     setManagementEnabled(!!sm.data?.managementEnabled);
     setLoading(false);
   };
-  
-  const onSaveExperience = async (data) => {
-    const res = await cvService.saveWorkExperience(data);
-    if (res.success) {
-      toast.success("Experiencia guardada");
-      await refresh(); // Esto volverá a llamar al summary y activará la sección 4 si aplica
-    }
-  };
 
   useEffect(() => { refresh(); }, []);
 
   useEffect(() => {
-    if (tab === 'management' && !managementEnabled) {
-      setTab('personal');
-    }
+    if (tab === 'management' && !managementEnabled) setTab('personal');
   }, [managementEnabled, tab]);
 
   useEffect(() => {
     return () => {
-      if (previewUrlRef.current) {
-        URL.revokeObjectURL(previewUrlRef.current);
-      }
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     };
   }, []);
 
@@ -78,46 +76,34 @@ export default function HojaVidaPage() {
     setPreview({ open: false, loading: false, url: '', mime: '', title: '', error: '' });
   };
 
+  // HU-014: previsualización de documentos adjuntos
   const openPreview = async ({ section, id, fileName }) => {
     try {
       if (previewUrlRef.current) {
         URL.revokeObjectURL(previewUrlRef.current);
         previewUrlRef.current = null;
       }
-
-      setPreview({
-        open: true,
-        loading: true,
-        url: '',
-        mime: '',
-        title: fileName || 'Documento adjunto',
-        error: '',
-      });
+      setPreview({ open: true, loading: true, url: '', mime: '', title: fileName || 'Documento adjunto', error: '' });
 
       const response = await cvService.getAttachmentPreview(section, id);
-      const blobUrl = URL.createObjectURL(response.data);
+      const blobUrl  = URL.createObjectURL(response.data);
       previewUrlRef.current = blobUrl;
 
       setPreview({
-        open: true,
-        loading: false,
-        url: blobUrl,
+        open: true, loading: false, url: blobUrl,
         mime: response.data.type || response.headers?.['content-type'] || '',
-        title: fileName || 'Documento adjunto',
-        error: '',
+        title: fileName || 'Documento adjunto', error: '',
       });
     } catch (err) {
       setPreview({
-        open: true,
-        loading: false,
-        url: '',
-        mime: '',
+        open: true, loading: false, url: '', mime: '',
         title: fileName || 'Documento adjunto',
         error: err.response?.data?.message || 'No se pudo cargar el documento para previsualizar',
       });
     }
   };
 
+  // HU-015 CA-001: descarga del PDF
   const getPdfExport = async () => {
     const response = await cvService.exportCvPdf();
     return response.data;
@@ -127,16 +113,16 @@ export default function HojaVidaPage() {
     setExportingPdf(true);
     try {
       const blob = await getPdfExport();
-      const url = URL.createObjectURL(blob);
+      const url  = URL.createObjectURL(blob);
       const date = new Date().toISOString().slice(0, 10);
       const link = document.createElement('a');
-      link.href = url;
+      link.href     = url;
       link.download = `hoja_vida_${date}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-      toast.success('Descarga iniciada');
+      toast.success('Descarga iniciada correctamente');
     } catch (err) {
       toast.error(err.response?.data?.message || 'No fue posible descargar la hoja de vida');
     } finally {
@@ -144,11 +130,12 @@ export default function HojaVidaPage() {
     }
   };
 
+  // HU-015 CA-002/CA-004: impresión con formato adecuado
   const handlePrintCv = async () => {
     setPrintingPdf(true);
     try {
       const blob = await getPdfExport();
-      const url = URL.createObjectURL(blob);
+      const url  = URL.createObjectURL(blob);
       const printWindow = window.open('', '_blank');
 
       if (!printWindow) {
@@ -158,25 +145,16 @@ export default function HojaVidaPage() {
       }
 
       printWindow.document.write(`
-        <!doctype html>
-        <html>
+        <!doctype html><html>
           <head>
             <title>Imprimir hoja de vida</title>
-            <style>
-              html, body { margin: 0; padding: 0; height: 100%; }
-              iframe { border: 0; width: 100%; height: 100%; }
-            </style>
+            <style>html,body{margin:0;padding:0;height:100%}iframe{border:0;width:100%;height:100%}</style>
           </head>
           <body>
             <iframe id="cv-pdf" src="${url}"></iframe>
             <script>
               const iframe = document.getElementById('cv-pdf');
-              iframe.onload = () => {
-                setTimeout(() => {
-                  window.focus();
-                  window.print();
-                }, 250);
-              };
+              iframe.onload = () => { setTimeout(() => { window.focus(); window.print(); }, 250); };
             <\/script>
           </body>
         </html>
@@ -197,27 +175,46 @@ export default function HojaVidaPage() {
 
   return (
     <div style={styles.page}>
+      {/* ── Encabezado con acciones HU-015 CA-005 ── */}
       <div style={styles.pageHeading}>
         <h1 style={styles.pageTitle}>Hoja de Vida</h1>
         <div style={styles.exportActions}>
-          <button type="button" style={styles.btnSecondary} onClick={handlePrintCv} disabled={printingPdf || exportingPdf}>
+          <button
+            type="button"
+            style={styles.btnSecondary}
+            onClick={handlePrintCv}
+            disabled={printingPdf || exportingPdf}
+            title="Imprimir hoja de vida"
+          >
             {printingPdf ? 'Abriendo impresión…' : '🖨 Imprimir'}
           </button>
-          <button type="button" style={styles.btn} onClick={handleDownloadCv} disabled={exportingPdf || printingPdf}>
+          <button
+            type="button"
+            style={styles.btn}
+            onClick={handleDownloadCv}
+            disabled={exportingPdf || printingPdf}
+            title="Descargar hoja de vida en PDF"
+          >
             {exportingPdf ? 'Generando PDF…' : '⬇ Descargar PDF'}
           </button>
         </div>
       </div>
+
       <p style={styles.pageSubtitle}>
-        Diligencie cada sección y guarde su avance. Puede adjuntar soportes en PDF o JPG (máx. 2 MB). Los campos marcados con <Req /> son obligatorios.
+        Diligencie cada sección y guarde su avance. Puede adjuntar soportes en PDF o JPG (máx. 2 MB).
+        Los campos marcados con <Req /> son obligatorios.
       </p>
 
+      {/* ── Pestañas ── */}
       <div style={styles.tabs}>
         {SECTIONS.map(s => {
           if (s.key === 'management' && !managementEnabled) return null;
           return (
-            <button key={s.key} onClick={() => setTab(s.key)}
-              style={{ ...styles.tab, ...(tab === s.key ? styles.tabActive : {}) }}>
+            <button
+              key={s.key}
+              onClick={() => setTab(s.key)}
+              style={{ ...styles.tab, ...(tab === s.key ? styles.tabActive : {}) }}
+            >
               {s.label}
             </button>
           );
@@ -225,59 +222,97 @@ export default function HojaVidaPage() {
       </div>
 
       <div style={styles.tabContent}>
-        {tab === 'personal' && <PersonalSection summary={summary} docTypes={docTypes} onSaved={refresh} onPreview={openPreview} />}
-        {tab === 'education' && <EducationSection summary={summary} onSaved={refresh} onPreview={openPreview} />}
-        {tab === 'work' && <WorkSection summary={summary} onSaved={refresh} onPreview={openPreview} />}
+        {tab === 'personal'   && <PersonalSection   summary={summary} docTypes={docTypes} onSaved={refresh} onPreview={openPreview} />}
+        {tab === 'education'  && <EducationSection  summary={summary} onSaved={refresh} onPreview={openPreview} />}
+        {tab === 'work'       && <WorkSection       summary={summary} onSaved={refresh} onPreview={openPreview} />}
         {tab === 'management' && <ManagementSection summary={summary} onSaved={refresh} onPreview={openPreview} />}
       </div>
 
+      {/* HU-014: modal de previsualización */}
       <DocumentPreviewModal preview={preview} onClose={closePreview} />
     </div>
   );
 }
 
-// ─── HU-006 / HU-007 ────────────────────────────────────────────────────────
+// ─── HU-006 / HU-007: Datos personales ──────────────────────────────────────
 function PersonalSection({ summary, docTypes, onSaved, onPreview }) {
   const initial = summary?.personal || {};
   const { register, handleSubmit, watch, formState: { errors }, reset } = useForm({
     defaultValues: {
-      firstName: initial.first_name || '',
-      middleName: initial.middle_name || '',
-      lastName: initial.last_name || '',
-      secondLastName: initial.second_last_name || '',
-      documentTypeId: initial.document_type_id || '',
-      documentNumber: initial.document_number || '',
-      birthDate: initial.birth_date || '',
-      gender: initial.gender || '',
-      phone: initial.phone || '',
-      mobile: initial.mobile || '',
-      email: initial.email || '',
-      country: initial.country || 'Colombia',
-      department: initial.department || '',
-      city: initial.city || '',
-      zoneType: initial.zone_type || 'URBANA',
-      address: initial.address || '',
+      firstName:         initial.first_name       || '',
+      middleName:        initial.middle_name       || '',
+      lastName:          initial.last_name         || '',
+      secondLastName:    initial.second_last_name  || '',
+      documentTypeId:    initial.document_type_id  || '',
+      documentNumber:    initial.document_number   || '',
+      birthDate:         initial.birth_date        || '',
+      gender:            initial.gender            || '',
+      phone:             initial.phone             || '',
+      mobile:            initial.mobile            || '',
+      email:             initial.email             || '',
+      country:           initial.country           || 'Colombia',
+      department:        initial.department        || '',
+      city:              initial.city              || '',
+      zoneType:          initial.zone_type         || 'URBANA',
+      address:           initial.address           || '',
       addressComplement: initial.address_complement || '',
     },
   });
-  const [file, setFile] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const zoneType = watch('zoneType');
+
+  const [file, setFile]           = useState(null);
+  const [fileError, setFileError] = useState('');
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState(
+    initial.photo_path ? null : null   // El servidor expone la foto via endpoint separado si existe
+  );
+  const [saving, setSaving]       = useState(false);
+  const zoneType   = watch('zoneType');
   const isValidated = !!initial.validated;
 
+  // HU-013 CA-001/CA-002/CA-003: validar soporte antes de subir
+  const handleFileChange = (e) => {
+    const f = e.target.files?.[0] || null;
+    setFile(f);
+    if (f) {
+      const err = validateFile(f, ALLOWED_MIME);
+      setFileError(err || '');
+      if (err) toast.error(err);
+    } else {
+      setFileError('');
+    }
+  };
+
+  const handlePhotoChange = (e) => {
+    const f = e.target.files?.[0] || null;
+    setPhotoFile(f);
+    if (f) {
+      const err = validateFile(f, ALLOWED_PHOTO_MIME);
+      if (err) { toast.error(err); setPhotoFile(null); return; }
+      const url = URL.createObjectURL(f);
+      setPhotoPreviewUrl(url);
+    }
+  };
+
   const onSubmit = async (values) => {
+    if (fileError) { toast.error('Corrija los errores antes de guardar'); return; }
     setSaving(true);
     try {
-      let payload = {
-        ...values,
-        documentTypeId: parseInt(values.documentTypeId),
-      };
+      let payload = { ...values, documentTypeId: parseInt(values.documentTypeId) };
+
+      // Soporte de sección
       if (file) {
         const att = await readFileAsBase64(file, { allowedMime: ALLOWED_MIME });
         payload = { ...payload, fileBase64: att.base64, fileMime: att.mime, fileName: att.name };
       }
+
+      // Foto de perfil
+      if (photoFile) {
+        const photoAtt = await readFileAsBase64(photoFile, { allowedMime: ALLOWED_PHOTO_MIME });
+        payload = { ...payload, photoBase64: photoAtt.base64, photoMime: photoAtt.mime, photoName: photoAtt.name };
+      }
+
       await cvService.savePersonal(payload);
-      toast.success('Datos personales guardados');
+      toast.success('Datos personales guardados correctamente'); // HU-013 CA-005
       onSaved();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Error al guardar');
@@ -290,6 +325,33 @@ function PersonalSection({ summary, docTypes, onSaved, onPreview }) {
     <form onSubmit={handleSubmit(onSubmit)} noValidate>
       {isValidated && <ValidatedBanner />}
       <fieldset disabled={isValidated} style={styles.fieldset}>
+
+        {/* ── Foto de perfil ── */}
+        <SectionHeader title="Foto de perfil" />
+        <div style={styles.photoRow}>
+          <div style={styles.photoBox}>
+            {photoPreviewUrl
+              ? <img src={photoPreviewUrl} alt="Foto de perfil" style={styles.photoImg} />
+              : <span style={styles.photoPlaceholder}>Sin foto</span>
+            }
+          </div>
+          <div>
+            <label style={styles.label}>
+              Cargar foto (JPG o PNG, máx. 2 MB)
+            </label>
+            <input
+              type="file"
+              accept={ACCEPTED_PHOTO_FILES}
+              onChange={handlePhotoChange}
+              style={{ display: 'block', marginTop: 6 }}
+            />
+            <span style={styles.fileHint}>
+              La foto aparecerá en el encabezado del PDF generado.
+            </span>
+          </div>
+        </div>
+
+        {/* ── Identificación ── */}
         <SectionHeader title="Identificación" />
         <div style={styles.formGrid}>
           <Field label="Primer nombre" required error={errors.firstName?.message}>
@@ -326,6 +388,7 @@ function PersonalSection({ summary, docTypes, onSaved, onPreview }) {
           </Field>
         </div>
 
+        {/* ── Contacto ── */}
         <SectionHeader title="Contacto" />
         <div style={styles.formGrid}>
           <Field label="Teléfono fijo">
@@ -335,14 +398,17 @@ function PersonalSection({ summary, docTypes, onSaved, onPreview }) {
             <input style={styles.input} {...register('mobile', { required: 'Requerido' })} />
           </Field>
           <Field label="Correo electrónico" required full error={errors.email?.message}>
-            <input style={styles.input} type="email"
+            <input
+              style={styles.input} type="email"
               {...register('email', {
                 required: 'Requerido',
                 pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'Correo inválido' },
-              })} />
+              })}
+            />
           </Field>
         </div>
 
+        {/* ── Residencia ── */}
         <SectionHeader title="Residencia" />
         <div style={styles.formGrid}>
           <Field label="País" required error={errors.country?.message}>
@@ -362,16 +428,19 @@ function PersonalSection({ summary, docTypes, onSaved, onPreview }) {
           </Field>
           {zoneType === 'URBANA' && (
             <Field label="Dirección" required full error={errors.address?.message}>
-              <input style={styles.input} placeholder="Ej: Calle 10 # 20-30"
-                {...register('address', { required: zoneType === 'URBANA' ? 'Dirección requerida' : false })} />
+              <input
+                style={styles.input} placeholder="Ej: Calle 10 # 20-30"
+                {...register('address', { required: zoneType === 'URBANA' ? 'Dirección requerida' : false })}
+              />
             </Field>
           )}
           {/* HU-007 */}
           {zoneType === 'RURAL' && (
-            <Field label="Complemento o dirección especial (zona rural)" required full
-              error={errors.addressComplement?.message}>
-              <input style={styles.input} placeholder="Ej: Vereda El Carmen, Finca La Esperanza"
-                {...register('addressComplement', { required: zoneType === 'RURAL' ? 'Requerido en zona rural' : false })} />
+            <Field label="Complemento o dirección especial (zona rural)" required full error={errors.addressComplement?.message}>
+              <input
+                style={styles.input} placeholder="Ej: Vereda El Carmen, Finca La Esperanza"
+                {...register('addressComplement', { required: zoneType === 'RURAL' ? 'Requerido en zona rural' : false })}
+              />
             </Field>
           )}
           {zoneType === 'URBANA' && (
@@ -379,15 +448,19 @@ function PersonalSection({ summary, docTypes, onSaved, onPreview }) {
               <input style={styles.input} placeholder="Ej: Apto 502, Torre B" {...register('addressComplement')} />
             </Field>
           )}
+
+          {/* HU-013: soporte de sección ── */}
           <Field label="Soporte de la sección (PDF o JPG, máx. 2 MB)" full>
             <input
               type="file"
               accept={ACCEPTED_SUPPORT_FILES}
-              onChange={e => setFile(e.target.files?.[0] || null)}
+              onChange={handleFileChange}
             />
+            {fileError && <span style={styles.error}>{fileError}</span>}
             {initial.attachment_name && (
               <span style={styles.fileHint}>
                 Archivo actual: {initial.attachment_name}
+                {/* HU-014 CA-001: botón Mostrar documento */}
                 <button
                   type="button"
                   style={styles.previewBtnInline}
@@ -410,7 +483,7 @@ function PersonalSection({ summary, docTypes, onSaved, onPreview }) {
   );
 }
 
-// ─── HU-008 ─────────────────────────────────────────────────────────────────
+// ─── HU-008: Formación académica ─────────────────────────────────────────────
 function EducationSection({ summary, onSaved, onPreview }) {
   const items = summary?.education || [];
   const [showForm, setShowForm] = useState(items.length === 0);
@@ -418,11 +491,12 @@ function EducationSection({ summary, onSaved, onPreview }) {
   return (
     <div>
       <SectionHeader title="Formación académica" subtitle="Pregrado, posgrado y tarjeta profesional" />
-
       {items.length > 0 && (
         <div style={styles.itemList}>
           {items.map(it => (
-            <ItemRow key={it.id} title={`${it.title} — ${it.institution}`}
+            <ItemRow
+              key={it.id}
+              title={`${it.title} — ${it.institution}`}
               meta={`${it.level}${it.start_date ? ` · ${it.start_date} — ${it.end_date || 'Actual'}` : ''}${it.attachment_name ? ` · 📎 ${it.attachment_name}` : ''}`}
               validated={!!it.validated}
               canPreview={!!it.attachment_name}
@@ -431,11 +505,11 @@ function EducationSection({ summary, onSaved, onPreview }) {
                 if (!window.confirm('¿Eliminar este registro?')) return;
                 try { await cvService.deleteEducation(it.id); toast.success('Eliminado'); onSaved(); }
                 catch (err) { toast.error(err.response?.data?.message || 'Error'); }
-              }} />
+              }}
+            />
           ))}
         </div>
       )}
-
       {!showForm
         ? <button type="button" style={styles.btnSecondary} onClick={() => setShowForm(true)}>+ Agregar formación</button>
         : <EducationForm onCancel={() => setShowForm(false)} onSaved={() => { setShowForm(false); onSaved(); }} />
@@ -446,10 +520,24 @@ function EducationSection({ summary, onSaved, onPreview }) {
 
 function EducationForm({ onSaved, onCancel }) {
   const { register, handleSubmit, formState: { errors } } = useForm();
-  const [file, setFile] = useState(null);
-  const [saving, setSaving] = useState(false);
+  const [file, setFile]           = useState(null);
+  const [fileError, setFileError] = useState('');
+  const [saving, setSaving]       = useState(false);
+
+  const handleFileChange = (e) => {
+    const f = e.target.files?.[0] || null;
+    setFile(f);
+    if (f) {
+      const err = validateFile(f, ALLOWED_MIME);
+      setFileError(err || '');
+      if (err) toast.error(err);
+    } else {
+      setFileError('');
+    }
+  };
 
   const onSubmit = async (values) => {
+    if (fileError) { toast.error('Corrija los errores antes de guardar'); return; }
     setSaving(true);
     try {
       let payload = { ...values };
@@ -458,7 +546,7 @@ function EducationForm({ onSaved, onCancel }) {
         payload = { ...payload, fileBase64: att.base64, fileMime: att.mime, fileName: att.name };
       }
       await cvService.createEducation(payload);
-      toast.success('Formación agregada');
+      toast.success('Formación agregada correctamente'); // HU-013 CA-005
       onSaved();
     } catch (err) {
       toast.error(err.response?.data?.message || err.message || 'Error al guardar');
@@ -493,12 +581,12 @@ function EducationForm({ onSaved, onCancel }) {
         <Field label="N° tarjeta profesional" full>
           <input style={styles.input} {...register('professionalCard')} />
         </Field>
+        {/* HU-013: soporte de sección */}
         <Field label="Soporte (PDF o JPG, máx. 2 MB)" full>
-          <input type="file" accept={ACCEPTED_SUPPORT_FILES}
-            onChange={e => setFile(e.target.files?.[0] || null)} />
+          <input type="file" accept={ACCEPTED_SUPPORT_FILES} onChange={handleFileChange} />
+          {fileError && <span style={styles.error}>{fileError}</span>}
         </Field>
       </div>
-
       <div style={styles.formActions}>
         <button type="button" style={styles.btnGhost} onClick={onCancel}>Cancelar</button>
         <button type="submit" style={{ ...styles.btn, opacity: saving ? 0.7 : 1 }} disabled={saving}>
@@ -509,7 +597,7 @@ function EducationForm({ onSaved, onCancel }) {
   );
 }
 
-// ─── HU-009 ─────────────────────────────────────────────────────────────────
+// ─── HU-009: Experiencia laboral ─────────────────────────────────────────────
 function WorkSection({ summary, onSaved, onPreview }) {
   const items = summary?.work || [];
   const [showForm, setShowForm] = useState(items.length === 0);
@@ -517,11 +605,12 @@ function WorkSection({ summary, onSaved, onPreview }) {
   return (
     <div>
       <SectionHeader title="Experiencia laboral" subtitle="Incluye experiencia docente" />
-
       {items.length > 0 && (
         <div style={styles.itemList}>
           {items.map(it => (
-            <ItemRow key={it.id} title={`${it.position} — ${it.employer}`}
+            <ItemRow
+              key={it.id}
+              title={`${it.position} — ${it.employer}`}
               meta={`${it.experience_type} · ${it.start_date} — ${it.is_current ? 'Actual' : (it.end_date || '—')}${it.attachment_name ? ` · 📎 ${it.attachment_name}` : ''}`}
               validated={!!it.validated}
               canPreview={!!it.attachment_name}
@@ -530,11 +619,11 @@ function WorkSection({ summary, onSaved, onPreview }) {
                 if (!window.confirm('¿Eliminar este registro?')) return;
                 try { await cvService.deleteWork(it.id); toast.success('Eliminado'); onSaved(); }
                 catch (err) { toast.error(err.response?.data?.message || 'Error'); }
-              }} />
+              }}
+            />
           ))}
         </div>
       )}
-
       {!showForm
         ? <button type="button" style={styles.btnSecondary} onClick={() => setShowForm(true)}>+ Agregar experiencia</button>
         : <WorkForm onCancel={() => setShowForm(false)} onSaved={() => { setShowForm(false); onSaved(); }} />
@@ -547,11 +636,25 @@ function WorkForm({ onSaved, onCancel }) {
   const { register, handleSubmit, watch, formState: { errors } } = useForm({
     defaultValues: { isCurrent: false },
   });
-  const [file, setFile] = useState(null);
-  const [saving, setSaving] = useState(false);
+  const [file, setFile]           = useState(null);
+  const [fileError, setFileError] = useState('');
+  const [saving, setSaving]       = useState(false);
   const isCurrent = watch('isCurrent');
 
+  const handleFileChange = (e) => {
+    const f = e.target.files?.[0] || null;
+    setFile(f);
+    if (f) {
+      const err = validateFile(f, ALLOWED_MIME);
+      setFileError(err || '');
+      if (err) toast.error(err);
+    } else {
+      setFileError('');
+    }
+  };
+
   const onSubmit = async (values) => {
+    if (fileError) { toast.error('Corrija los errores antes de guardar'); return; }
     setSaving(true);
     try {
       let payload = { ...values, isCurrent: !!values.isCurrent };
@@ -560,7 +663,7 @@ function WorkForm({ onSaved, onCancel }) {
         payload = { ...payload, fileBase64: att.base64, fileMime: att.mime, fileName: att.name };
       }
       await cvService.createWork(payload);
-      toast.success('Experiencia agregada');
+      toast.success('Experiencia agregada correctamente'); // HU-013 CA-005
       onSaved();
     } catch (err) {
       toast.error(err.response?.data?.message || err.message || 'Error al guardar');
@@ -600,12 +703,12 @@ function WorkForm({ onSaved, onCancel }) {
         <Field label="Funciones / responsabilidades" full>
           <textarea style={{ ...styles.input, minHeight: 70 }} {...register('responsibilities')} />
         </Field>
+        {/* HU-013: soporte de sección */}
         <Field label="Certificación (PDF o JPG, máx. 2 MB)" full>
-          <input type="file" accept={ACCEPTED_SUPPORT_FILES}
-            onChange={e => setFile(e.target.files?.[0] || null)} />
+          <input type="file" accept={ACCEPTED_SUPPORT_FILES} onChange={handleFileChange} />
+          {fileError && <span style={styles.error}>{fileError}</span>}
         </Field>
       </div>
-
       <div style={styles.formActions}>
         <button type="button" style={styles.btnGhost} onClick={onCancel}>Cancelar</button>
         <button type="submit" style={{ ...styles.btn, opacity: saving ? 0.7 : 1 }} disabled={saving}>
@@ -616,22 +719,36 @@ function WorkForm({ onSaved, onCancel }) {
   );
 }
 
-// ─── HU-010 ─────────────────────────────────────────────────────────────────
+// ─── HU-010: Gerencia Pública ────────────────────────────────────────────────
 function ManagementSection({ summary, onSaved, onPreview }) {
   const initial = summary?.management || {};
   const { register, handleSubmit, formState: { errors } } = useForm({
     defaultValues: {
       hierarchicalLevel: initial.hierarchical_level || '',
-      positionName: initial.position_name || '',
-      entityName: initial.entity_name || '',
-      startDate: initial.start_date || '',
+      positionName:      initial.position_name      || '',
+      entityName:        initial.entity_name        || '',
+      startDate:         initial.start_date         || '',
     },
   });
-  const [file, setFile] = useState(null);
-  const [saving, setSaving] = useState(false);
+  const [file, setFile]           = useState(null);
+  const [fileError, setFileError] = useState('');
+  const [saving, setSaving]       = useState(false);
   const isValidated = !!initial.validated;
 
+  const handleFileChange = (e) => {
+    const f = e.target.files?.[0] || null;
+    setFile(f);
+    if (f) {
+      const err = validateFile(f, ALLOWED_MIME);
+      setFileError(err || '');
+      if (err) toast.error(err);
+    } else {
+      setFileError('');
+    }
+  };
+
   const onSubmit = async (values) => {
+    if (fileError) { toast.error('Corrija los errores antes de guardar'); return; }
     setSaving(true);
     try {
       let payload = { ...values };
@@ -640,7 +757,7 @@ function ManagementSection({ summary, onSaved, onPreview }) {
         payload = { ...payload, fileBase64: att.base64, fileMime: att.mime, fileName: att.name };
       }
       await cvService.saveManagement(payload);
-      toast.success('Sección Gerencia Pública guardada');
+      toast.success('Sección Gerencia Pública guardada'); // HU-013 CA-005
       onSaved();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Error al guardar');
@@ -652,8 +769,7 @@ function ManagementSection({ summary, onSaved, onPreview }) {
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate>
       {isValidated && <ValidatedBanner />}
-      <SectionHeader title="Gerencia Pública"
-        subtitle="Sección habilitada por su cargo directivo" />
+      <SectionHeader title="Gerencia Pública" subtitle="Sección habilitada por su cargo directivo" />
       <fieldset disabled={isValidated} style={styles.fieldset}>
         <div style={styles.formGrid}>
           <Field label="Nivel jerárquico" required error={errors.hierarchicalLevel?.message}>
@@ -673,15 +789,14 @@ function ManagementSection({ summary, onSaved, onPreview }) {
           <Field label="Fecha de posesión" required error={errors.startDate?.message}>
             <input style={styles.input} type="date" {...register('startDate', { required: 'Requerido' })} />
           </Field>
+          {/* HU-013: soporte de sección */}
           <Field label="Soporte de la sección (PDF o JPG, máx. 2 MB)" full>
-            <input
-              type="file"
-              accept={ACCEPTED_SUPPORT_FILES}
-              onChange={e => setFile(e.target.files?.[0] || null)}
-            />
+            <input type="file" accept={ACCEPTED_SUPPORT_FILES} onChange={handleFileChange} />
+            {fileError && <span style={styles.error}>{fileError}</span>}
             {initial.attachment_name && (
               <span style={styles.fileHint}>
                 Archivo actual: {initial.attachment_name}
+                {/* HU-014 CA-001: botón Mostrar documento */}
                 <button
                   type="button"
                   style={styles.previewBtnInline}
@@ -704,7 +819,7 @@ function ManagementSection({ summary, onSaved, onPreview }) {
   );
 }
 
-// ─── Helpers UI ─────────────────────────────────────────────────────────────
+// ─── Helpers UI ──────────────────────────────────────────────────────────────
 const Field = ({ label, required, full, error, children }) => (
   <div style={{ ...styles.field, ...(full ? { gridColumn: '1 / -1' } : {}) }}>
     <label style={styles.label}>{label}{required && <Req />}</label>
@@ -733,6 +848,7 @@ const ItemRow = ({ title, meta, validated, canPreview, onPreview, onDelete }) =>
       <p style={{ margin: '4px 0 0', color: '#666', fontSize: 12 }}>{meta}</p>
     </div>
     <div style={styles.itemActions}>
+      {/* HU-014 CA-001: ícono Mostrar documento */}
       {canPreview && (
         <button type="button" style={styles.previewBtn} onClick={onPreview}>
           👁 Mostrar documento
@@ -740,20 +856,28 @@ const ItemRow = ({ title, meta, validated, canPreview, onPreview, onDelete }) =>
       )}
       {validated
         ? <span style={styles.validatedBadge}>✓ Validado</span>
-        : <button type="button" style={styles.deleteBtn} onClick={onDelete}>Eliminar</button>}
+        : <button type="button" style={styles.deleteBtn} onClick={onDelete}>Eliminar</button>
+      }
     </div>
   </div>
 );
 
+// HU-014: modal de previsualización de documentos PDF/JPG
 const DocumentPreviewModal = ({ preview, onClose }) => {
   if (!preview.open) return null;
 
-  const isPdf = preview.mime.includes('pdf');
-  const isImage = preview.mime.includes('image/');
+  const isPdf    = preview.mime.includes('pdf');
+  const isImage  = preview.mime.includes('image/');
 
   return (
     <div style={styles.modalBackdrop} onClick={onClose} role="presentation">
-      <div style={styles.modalCard} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Previsualización de documento">
+      <div
+        style={styles.modalCard}
+        onClick={e => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Previsualización de documento"
+      >
         <div style={styles.modalHeader}>
           <div>
             <p style={styles.modalTitle}>Previsualización de documento</p>
@@ -763,8 +887,13 @@ const DocumentPreviewModal = ({ preview, onClose }) => {
         </div>
 
         <div style={styles.previewBody}>
+          {/* HU-014 CA-001/CA-003: carga y visualización */}
           {preview.loading && <p style={styles.previewInfo}>Cargando documento…</p>}
-          {!preview.loading && preview.error && <p style={{ ...styles.previewInfo, color: '#e53935' }}>{preview.error}</p>}
+
+          {/* HU-014 CA-004: error cuando el archivo no está disponible */}
+          {!preview.loading && preview.error && (
+            <p style={{ ...styles.previewInfo, color: '#e53935' }}>{preview.error}</p>
+          )}
 
           {!preview.loading && !preview.error && preview.url && isPdf && (
             <iframe title="Previsualización PDF" src={preview.url} style={styles.previewFrame} />
@@ -783,35 +912,41 @@ const DocumentPreviewModal = ({ preview, onClose }) => {
   );
 };
 
+// ─── Estilos ─────────────────────────────────────────────────────────────────
 const styles = {
-  loading: { padding: 40, textAlign: 'center', color: '#666' },
-  page: { maxWidth: 950, margin: '0 auto' },
-  pageHeading: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
-    flexWrap: 'wrap',
-  },
-  pageTitle: { fontSize: 24, fontWeight: 800, color: '#003366', margin: '0 0 6px' },
+  loading:      { padding: 40, textAlign: 'center', color: '#666' },
+  page:         { maxWidth: 950, margin: '0 auto' },
+  pageHeading:  { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+  pageTitle:    { fontSize: 24, fontWeight: 800, color: '#003366', margin: '0 0 6px' },
   pageSubtitle: { color: '#666', fontSize: 14, margin: '0 0 24px' },
-  exportActions: { display: 'flex', gap: 8, flexWrap: 'wrap' },
-  tabs: { display: 'flex', gap: 4, flexWrap: 'wrap' },
+  exportActions:{ display: 'flex', gap: 8, flexWrap: 'wrap' },
+  tabs:         { display: 'flex', gap: 4, flexWrap: 'wrap' },
   tab: {
     padding: '10px 16px', background: '#e8edf4', border: 'none', borderRadius: '8px 8px 0 0',
     cursor: 'pointer', fontSize: 13, color: '#555', fontWeight: 500,
   },
-  tabActive: { background: '#fff', color: '#003366', fontWeight: 700, boxShadow: '0 -2px 8px rgba(0,0,0,0.05)' },
-  tabContent: { background: '#fff', borderRadius: '0 8px 8px 8px', padding: 28, boxShadow: '0 2px 12px rgba(0,0,51,0.08)' },
-  fieldset: { border: 'none', padding: 0, margin: 0 },
+  tabActive:    { background: '#fff', color: '#003366', fontWeight: 700, boxShadow: '0 -2px 8px rgba(0,0,0,0.05)' },
+  tabContent:   { background: '#fff', borderRadius: '0 8px 8px 8px', padding: 28, boxShadow: '0 2px 12px rgba(0,0,51,0.08)' },
+  fieldset:     { border: 'none', padding: 0, margin: 0 },
   sectionTitle: { color: '#003366', fontSize: 16, fontWeight: 700, margin: 0 },
-  sectionSub: { color: '#888', fontSize: 12, margin: '2px 0 0' },
-  formGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 18px' },
-  field: { marginBottom: 16 },
-  label: { display: 'block', fontSize: 13, fontWeight: 600, color: '#444', marginBottom: 6 },
+  sectionSub:   { color: '#888', fontSize: 12, margin: '2px 0 0' },
+  formGrid:     { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 18px' },
+  field:        { marginBottom: 16 },
+  label:        { display: 'block', fontSize: 13, fontWeight: 600, color: '#444', marginBottom: 6 },
   input: {
     width: '100%', padding: '9px 12px', border: '1.5px solid #ddd', borderRadius: 8,
     fontSize: 14, color: '#333', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
   },
-  error: { display: 'block', fontSize: 12, color: '#e53935', marginTop: 4 },
-  fileHint: { display: 'block', marginTop: 6, color: '#666', fontSize: 12 },
+  error:           { display: 'block', fontSize: 12, color: '#e53935', marginTop: 4 },
+  fileHint:        { display: 'block', marginTop: 6, color: '#666', fontSize: 12 },
+  photoRow:        { display: 'flex', alignItems: 'flex-start', gap: 18, marginBottom: 20 },
+  photoBox: {
+    width: 96, height: 96, borderRadius: 8, border: '2px solid #d0d7e8',
+    overflow: 'hidden', flexShrink: 0, background: '#f4f7fb',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  },
+  photoImg:        { width: '100%', height: '100%', objectFit: 'cover' },
+  photoPlaceholder:{ fontSize: 11, color: '#aaa', textAlign: 'center' },
   btn: {
     padding: '11px 24px', background: 'linear-gradient(135deg, #003366, #005599)',
     color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer',
@@ -824,14 +959,14 @@ const styles = {
     padding: '10px 18px', background: 'transparent', color: '#666',
     border: '1px solid #ddd', borderRadius: 8, fontSize: 14, cursor: 'pointer',
   },
-  formActions: { display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 12 },
-  subForm: { background: '#f8f9fa', borderRadius: 8, padding: 18, marginTop: 14, border: '1px solid #e0e0e0' },
-  itemList: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 },
+  formActions:     { display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 12 },
+  subForm:         { background: '#f8f9fa', borderRadius: 8, padding: 18, marginTop: 14, border: '1px solid #e0e0e0' },
+  itemList:        { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 },
   itemRow: {
     display: 'flex', alignItems: 'center', gap: 12,
     background: '#f8f9fa', border: '1px solid #e8e8e8', borderRadius: 8, padding: '12px 14px',
   },
-  itemActions: { display: 'flex', gap: 8, alignItems: 'center' },
+  itemActions:     { display: 'flex', gap: 8, alignItems: 'center' },
   previewBtnInline: {
     marginLeft: 10, background: 'transparent', color: '#003366', border: 'none',
     textDecoration: 'underline', cursor: 'pointer', fontSize: 12, padding: 0,
@@ -852,7 +987,7 @@ const styles = {
     padding: '10px 14px', fontSize: 13, color: '#856404', marginBottom: 16,
   },
   modalBackdrop: {
-    position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.55)', zIndex: 40,
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 40,
     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14,
   },
   modalCard: {
@@ -863,7 +998,7 @@ const styles = {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     borderBottom: '1px solid #ececec', padding: '12px 16px',
   },
-  modalTitle: { margin: 0, fontSize: 16, fontWeight: 700, color: '#003366' },
+  modalTitle:    { margin: 0, fontSize: 16, fontWeight: 700, color: '#003366' },
   modalSubTitle: {
     margin: '2px 0 0', fontSize: 12, color: '#666', maxWidth: 680,
     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',

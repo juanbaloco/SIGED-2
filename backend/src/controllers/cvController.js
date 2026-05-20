@@ -15,14 +15,16 @@ const userId = (req) => req.user.sub;
 
 // GET /api/cv/summary
 exports.getSummary = (req, res, next) => {
-  try {
-    const summary = cvService.getSummary(userId(req));
+  try { res.json({ success: true, data: cvService.getSummary(userId(req)) }); const summary = cvService.getSummary(userId(req));
     const enabled = cvService.isManagementEnabled(userId(req));
-    res.json({
+    return res.json({
       success: true,
-      data: {...summary, managementEnabled: !!enabled },
+      data: {
+        ...summary,
+        managementEnabled: !!enabled,
+      },
     });
-    } catch (err) {
+  } catch (err) {
     next(err);
   }
 };
@@ -50,7 +52,6 @@ exports.createEducation = (req, res, next) => {
   catch (err) { next(err); }
 };
 exports.updateEducation = (req, res, next) => {
-  if (!handleValidation(req, res)) return;
   try { res.json({ success: true, data: cvService.updateEducation(userId(req), parseInt(req.params.id), req.body) }); }
   catch (err) { next(err); }
 };
@@ -70,7 +71,6 @@ exports.createWork = (req, res, next) => {
   catch (err) { next(err); }
 };
 exports.updateWork = (req, res, next) => {
-  if (!handleValidation(req, res)) return;
   try { res.json({ success: true, data: cvService.updateWork(userId(req), parseInt(req.params.id), req.body) }); }
   catch (err) { next(err); }
 };
@@ -84,13 +84,11 @@ exports.getManagement = async (req, res, next) => {
   try {
     const enabled = await cvService.isManagementEnabled(userId(req));
     if (!enabled) {
-      return res.status(403).json({ success:false,
-        message: 'Sección de Gerencia Pública no habilitada para su cargo.' 
-      });
+      return res.status(403).json({ error: 'Sección de Gerencia Pública no habilitada para su cargo.' });
     }
 
     const management = await cvService.getManagement(userId(req));
-    return res.json({ success: true, data: management || {} });
+    return res.json({ data: management || {} });
   } catch (err) {
     next(err);
   }
@@ -100,9 +98,7 @@ exports.saveManagement = async (req, res, next) => {
   try {
     const enabled = await cvService.isManagementEnabled(userId(req));
     if (!enabled) {
-      return res.status(403).json({
-         success: false,
-         message: 'No autorizado para guardar Gerencia Pública.' });
+      return res.status(403).json({ error: 'No autorizado para guardar Gerencia Pública.' });
     }
 
     const payload = {
@@ -114,7 +110,7 @@ exports.saveManagement = async (req, res, next) => {
     };
 
     const management = await cvService.upsertManagement(userId(req), payload);
-    return res.json({ success: true, data: management });
+    return res.json({ data: management });
   } catch (err) {
     next(err);
   }
@@ -136,7 +132,6 @@ exports.getAttachment = (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-
 // HU-015 — Descargar e imprimir hoja de vida
 exports.exportPdf = async (req, res, next) => {
   try {
@@ -145,15 +140,5 @@ exports.exportPdf = async (req, res, next) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="hoja_vida_${date}.pdf"`);
     return res.send(pdfBuffer);
-  } catch (err) { next(err); }
-};
-
-// ─── OBS #2 — Validar / desvalidar sección (solo JTH/ADMIN) ─────────────────
-exports.setValidation = (req, res, next) => {
-  if (!handleValidation(req, res)) return;
-  try {
-    const { userId: targetUserId, section, recordId, validated } = req.body;
-    const result = cvService.setSectionValidation(targetUserId, section, recordId, validated);
-    res.json({ success: true, data: result });
   } catch (err) { next(err); }
 };
