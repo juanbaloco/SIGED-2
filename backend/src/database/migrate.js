@@ -20,6 +20,7 @@ const migrate = async () => {
       is_active            INTEGER NOT NULL DEFAULT 1,
       must_change_password INTEGER NOT NULL DEFAULT 1,
       welcome_email_sent   INTEGER NOT NULL DEFAULT 0,
+      gerencia_publica_enabled INTEGER NOT NULL DEFAULT 0,
       login_attempts       INTEGER NOT NULL DEFAULT 0,
       locked_until         TEXT,
       created_at           TEXT NOT NULL DEFAULT (datetime('now')),
@@ -42,20 +43,20 @@ const migrate = async () => {
       end_date    TEXT,
       assigned_by TEXT,
       created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (user_id)     REFERENCES users(id),
-      FOREIGN KEY (role_id)     REFERENCES roles(id),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (role_id) REFERENCES roles(id),
       FOREIGN KEY (assigned_by) REFERENCES users(id)
     );
 
     CREATE TABLE IF NOT EXISTS password_reset_tokens (
-      id                INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id           TEXT NOT NULL,
-      token             TEXT NOT NULL UNIQUE,
-      token_hash        TEXT NOT NULL,
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id            TEXT NOT NULL,
+      token              TEXT NOT NULL UNIQUE,
+      token_hash         TEXT NOT NULL,
       temp_password_hash TEXT,
-      expires_at        TEXT NOT NULL,
-      used              INTEGER NOT NULL DEFAULT 0,
-      created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at         TEXT NOT NULL,
+      used               INTEGER NOT NULL DEFAULT 0,
+      created_at         TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
 
@@ -81,15 +82,14 @@ const migrate = async () => {
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_users_doc              ON users(document_type_id, document_number);
-    CREATE INDEX IF NOT EXISTS idx_users_email            ON users(email);
-    CREATE INDEX IF NOT EXISTS idx_user_roles_user        ON user_roles(user_id);
-    CREATE INDEX IF NOT EXISTS idx_refresh_tokens         ON refresh_tokens(token_hash);
-    CREATE INDEX IF NOT EXISTS idx_audit_user             ON audit_log(user_id);
-    CREATE INDEX IF NOT EXISTS idx_reset_tokens_token     ON password_reset_tokens(token);
-    CREATE INDEX IF NOT EXISTS idx_reset_tokens_user      ON password_reset_tokens(user_id);
+    CREATE INDEX IF NOT EXISTS idx_users_doc ON users(document_type_id, document_number);
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    CREATE INDEX IF NOT EXISTS idx_user_roles_user ON user_roles(user_id);
+    CREATE INDEX IF NOT EXISTS idx_refresh_tokens ON refresh_tokens(token_hash);
+    CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id);
+    CREATE INDEX IF NOT EXISTS idx_reset_tokens_token ON password_reset_tokens(token);
+    CREATE INDEX IF NOT EXISTS idx_reset_tokens_user ON password_reset_tokens(user_id);
 
-    -- ── MÓDULO 2: HOJA DE VIDA ─────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS cv_personal_data (
       user_id              TEXT PRIMARY KEY,
       first_name           TEXT NOT NULL,
@@ -111,6 +111,8 @@ const migrate = async () => {
       address_complement   TEXT,
       attachment_path      TEXT,
       attachment_name      TEXT,
+      photo_path           TEXT,
+      photo_name           TEXT,
       validated            INTEGER NOT NULL DEFAULT 0,
       validated_by         TEXT,
       validated_at         TEXT,
@@ -175,8 +177,8 @@ const migrate = async () => {
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_cv_education_user      ON cv_education(user_id);
-    CREATE INDEX IF NOT EXISTS idx_cv_work_user           ON cv_work_experience(user_id);
+    CREATE INDEX IF NOT EXISTS idx_cv_education_user ON cv_education(user_id);
+    CREATE INDEX IF NOT EXISTS idx_cv_work_user ON cv_work_experience(user_id);
   `);
 
   const ensureColumn = (table, column, definition) => {
@@ -186,13 +188,22 @@ const migrate = async () => {
     }
   };
 
+  ensureColumn('users', 'welcome_email_sent', 'welcome_email_sent INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('users', 'gerencia_publica_enabled', 'gerencia_publica_enabled INTEGER NOT NULL DEFAULT 0');
+
   ensureColumn('cv_personal_data', 'attachment_path', 'attachment_path TEXT');
   ensureColumn('cv_personal_data', 'attachment_name', 'attachment_name TEXT');
+  ensureColumn('cv_personal_data', 'photo_path', 'photo_path TEXT');
+  ensureColumn('cv_personal_data', 'photo_name', 'photo_name TEXT');
+
   ensureColumn('cv_management', 'attachment_path', 'attachment_path TEXT');
   ensureColumn('cv_management', 'attachment_name', 'attachment_name TEXT');
 
-  console.log('✅ Migrations completed successfully');
+  console.log('Migrations completed successfully');
   process.exit(0);
 };
 
-migrate().catch(err => { console.error(err); process.exit(1); });
+migrate().catch(err => {
+  console.error(err);
+  process.exit(1);
+});
