@@ -13,6 +13,75 @@ const SECTIONS = [
 
 const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/jpg'];
 const ACCEPTED_SUPPORT_FILES = 'application/pdf,image/jpeg,.jpg,.jpeg';
+const MAX_FILE_BYTES = 2 * 1024 * 1024; // HU-013 CA-002: 2 MB
+
+/**
+ * HU-013 CA-001/CA-002/CA-003
+ * Valida formato y tamaño. Retorna null si es válido, o string de error.
+ */
+function validateSupportFile(file) {
+  if (!file) return null;
+  if (!ALLOWED_MIME.includes(file.type)) {
+    return 'Formato no permitido. Solo se aceptan archivos PDF o JPG.';
+  }
+  if (file.size > MAX_FILE_BYTES) {
+    return `El archivo supera el límite de 2 MB (tamaño actual: ${(file.size / 1024 / 1024).toFixed(2)} MB).`;
+  }
+  return null;
+}
+
+/**
+ * HU-013 CA-005 / HU-014 CA-001
+ * Input de archivo con validación visual, confirmación de carga y previsualización local.
+ */
+function SupportFileInput({ label = 'Soporte de la sección (PDF o JPG, máx. 2 MB)', file, onChange, currentFileName, onPreviewCurrent }) {
+  const [fileError, setFileError] = useState(null);
+
+  const handleChange = (e) => {
+    const selected = e.target.files?.[0] || null;
+    if (!selected) { setFileError(null); onChange(null); return; }
+    const err = validateSupportFile(selected);
+    if (err) {
+      setFileError(err);
+      onChange(null);
+      e.target.value = '';
+    } else {
+      setFileError(null);
+      onChange(selected);
+    }
+  };
+
+  return (
+    <Field label={label} full error={fileError}>
+      <input
+        type="file"
+        accept={ACCEPTED_SUPPORT_FILES}
+        onChange={handleChange}
+      />
+      {/* HU-013 CA-005: confirmación de archivo seleccionado */}
+      {file && !fileError && (
+        <span style={styles.fileSuccess}>
+          ✅ Archivo listo para guardar: <strong>{file.name}</strong>
+        </span>
+      )}
+      {/* HU-014 CA-001/CA-002: botón mostrar documento actual */}
+      {currentFileName && !file && (
+        <span style={styles.fileHint}>
+          Archivo actual: {currentFileName}
+          {onPreviewCurrent && (
+            <button
+              type="button"
+              style={styles.previewBtnInline}
+              onClick={onPreviewCurrent}
+            >
+              👁 Mostrar documento
+            </button>
+          )}
+        </span>
+      )}
+    </Field>
+  );
+}
 
 // HU-012: marcador visual de obligatorio
 const Req = () => <span style={{ color: '#e53935', marginLeft: 2 }}>*</span>;
@@ -379,25 +448,12 @@ function PersonalSection({ summary, docTypes, onSaved, onPreview }) {
               <input style={styles.input} placeholder="Ej: Apto 502, Torre B" {...register('addressComplement')} />
             </Field>
           )}
-          <Field label="Soporte de la sección (PDF o JPG, máx. 2 MB)" full>
-            <input
-              type="file"
-              accept={ACCEPTED_SUPPORT_FILES}
-              onChange={e => setFile(e.target.files?.[0] || null)}
-            />
-            {initial.attachment_name && (
-              <span style={styles.fileHint}>
-                Archivo actual: {initial.attachment_name}
-                <button
-                  type="button"
-                  style={styles.previewBtnInline}
-                  onClick={() => onPreview({ section: 'personal', fileName: initial.attachment_name })}
-                >
-                  👁 Mostrar documento
-                </button>
-              </span>
-            )}
-          </Field>
+          <SupportFileInput
+            file={file}
+            onChange={setFile}
+            currentFileName={initial.attachment_name}
+            onPreviewCurrent={() => onPreview({ section: 'personal', id: initial.id, fileName: initial.attachment_name })}
+          />
         </div>
       </fieldset>
 
@@ -493,10 +549,7 @@ function EducationForm({ onSaved, onCancel }) {
         <Field label="N° tarjeta profesional" full>
           <input style={styles.input} {...register('professionalCard')} />
         </Field>
-        <Field label="Soporte (PDF o JPG, máx. 2 MB)" full>
-          <input type="file" accept={ACCEPTED_SUPPORT_FILES}
-            onChange={e => setFile(e.target.files?.[0] || null)} />
-        </Field>
+        <SupportFileInput file={file} onChange={setFile} />
       </div>
 
       <div style={styles.formActions}>
@@ -600,10 +653,7 @@ function WorkForm({ onSaved, onCancel }) {
         <Field label="Funciones / responsabilidades" full>
           <textarea style={{ ...styles.input, minHeight: 70 }} {...register('responsibilities')} />
         </Field>
-        <Field label="Certificación (PDF o JPG, máx. 2 MB)" full>
-          <input type="file" accept={ACCEPTED_SUPPORT_FILES}
-            onChange={e => setFile(e.target.files?.[0] || null)} />
-        </Field>
+        <SupportFileInput label="Certificación (PDF o JPG, máx. 2 MB)" file={file} onChange={setFile} />
       </div>
 
       <div style={styles.formActions}>
@@ -673,25 +723,12 @@ function ManagementSection({ summary, onSaved, onPreview }) {
           <Field label="Fecha de posesión" required error={errors.startDate?.message}>
             <input style={styles.input} type="date" {...register('startDate', { required: 'Requerido' })} />
           </Field>
-          <Field label="Soporte de la sección (PDF o JPG, máx. 2 MB)" full>
-            <input
-              type="file"
-              accept={ACCEPTED_SUPPORT_FILES}
-              onChange={e => setFile(e.target.files?.[0] || null)}
-            />
-            {initial.attachment_name && (
-              <span style={styles.fileHint}>
-                Archivo actual: {initial.attachment_name}
-                <button
-                  type="button"
-                  style={styles.previewBtnInline}
-                  onClick={() => onPreview({ section: 'management', fileName: initial.attachment_name })}
-                >
-                  👁 Mostrar documento
-                </button>
-              </span>
-            )}
-          </Field>
+          <SupportFileInput
+            file={file}
+            onChange={setFile}
+            currentFileName={initial.attachment_name}
+            onPreviewCurrent={() => onPreview({ section: 'management', id: initial.id, fileName: initial.attachment_name })}
+          />
         </div>
       </fieldset>
 
@@ -759,7 +796,20 @@ const DocumentPreviewModal = ({ preview, onClose }) => {
             <p style={styles.modalTitle}>Previsualización de documento</p>
             <p style={styles.modalSubTitle}>{preview.title}</p>
           </div>
-          <button type="button" style={styles.btnGhost} onClick={onClose}>Cerrar</button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {/* HU-015 CA-001: descarga directa desde la previsualización */}
+            {preview.url && !preview.loading && !preview.error && (
+              <a
+                href={preview.url}
+                download={preview.title}
+                style={styles.btnDownloadModal}
+                title="Descargar documento"
+              >
+                ⬇ Descargar
+              </a>
+            )}
+            <button type="button" style={styles.btnGhost} onClick={onClose}>Cerrar</button>
+          </div>
         </div>
 
         <div style={styles.previewBody}>
@@ -812,6 +862,14 @@ const styles = {
   },
   error: { display: 'block', fontSize: 12, color: '#e53935', marginTop: 4 },
   fileHint: { display: 'block', marginTop: 6, color: '#666', fontSize: 12 },
+  // HU-013 CA-005: confirmación visual de carga exitosa
+  fileSuccess: { display: 'block', marginTop: 6, color: '#2e7d32', fontSize: 12 },
+  // HU-015 CA-001: descarga desde modal de previsualización
+  btnDownloadModal: {
+    padding: '8px 14px', background: '#eaf3ff', color: '#003366',
+    border: '1px solid #bfd9ff', borderRadius: 8, fontSize: 13, fontWeight: 600,
+    cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center',
+  },
   btn: {
     padding: '11px 24px', background: 'linear-gradient(135deg, #003366, #005599)',
     color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer',
